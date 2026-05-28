@@ -28,8 +28,7 @@ final class OidcProvider
         private readonly JwtValidator $jwt,
         private readonly ConfigRepository $config,
         private readonly HttpFactory $http,
-    ) {
-    }
+    ) {}
 
     public function redirectToLogin(Request $request): RedirectResponse
     {
@@ -41,13 +40,13 @@ final class OidcProvider
         }
 
         $params = [
-            'response_type'         => 'code',
-            'client_id'             => $this->requireConfig('road.auth_server.client_id'),
-            'redirect_uri'          => $this->requireConfig('road.auth_server.redirect_uri'),
-            'scope'                 => implode(' ', (array) $this->config->get('road.auth_server.scopes', ['openid'])),
-            'state'                 => $codes->state,
-            'nonce'                 => $codes->nonce,
-            'code_challenge'        => $codes->challenge,
+            'response_type' => 'code',
+            'client_id' => $this->requireConfig('road.auth_server.client_id'),
+            'redirect_uri' => $this->requireConfig('road.auth_server.redirect_uri'),
+            'scope' => implode(' ', (array) $this->config->get('road.auth_server.scopes', ['openid'])),
+            'state' => $codes->state,
+            'nonce' => $codes->nonce,
+            'code_challenge' => $codes->challenge,
             'code_challenge_method' => 'S256',
         ];
 
@@ -97,7 +96,7 @@ final class OidcProvider
         }
 
         $params = array_filter([
-            'id_token_hint'            => $idToken,
+            'id_token_hint' => $idToken,
             'post_logout_redirect_uri' => $request->root(),
         ], fn (?string $v) => $v !== null && $v !== '');
 
@@ -110,9 +109,9 @@ final class OidcProvider
             $response = $this->http->asForm()->timeout(10)->post(
                 $this->discovery->tokenEndpoint(),
                 [
-                    'grant_type'    => 'refresh_token',
+                    'grant_type' => 'refresh_token',
                     'refresh_token' => $refreshToken,
-                    'client_id'     => $this->requireConfig('road.auth_server.client_id'),
+                    'client_id' => $this->requireConfig('road.auth_server.client_id'),
                     'client_secret' => $this->requireConfig('road.auth_server.client_secret'),
                 ]
             );
@@ -150,10 +149,10 @@ final class OidcProvider
             $response = $this->http->asForm()->timeout(10)->post(
                 $this->discovery->tokenEndpoint(),
                 [
-                    'grant_type'    => 'authorization_code',
-                    'code'          => $code,
-                    'redirect_uri'  => $this->requireConfig('road.auth_server.redirect_uri'),
-                    'client_id'     => $this->requireConfig('road.auth_server.client_id'),
+                    'grant_type' => 'authorization_code',
+                    'code' => $code,
+                    'redirect_uri' => $this->requireConfig('road.auth_server.redirect_uri'),
+                    'client_id' => $this->requireConfig('road.auth_server.client_id'),
                     'client_secret' => $this->requireConfig('road.auth_server.client_secret'),
                     'code_verifier' => $verifier,
                 ]

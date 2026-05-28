@@ -18,8 +18,7 @@ final class FakeHttpTransport implements HttpTransportInterface
     public function __construct(
         private readonly InMemoryBackend $backend,
         private readonly RoadContext $context,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<string,mixed>|null  $body

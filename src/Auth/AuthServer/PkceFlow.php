@@ -16,9 +16,7 @@ final class PkceFlow
 {
     private const SESSION_KEY = 'road.oidc.pkce';
 
-    public function __construct(private readonly Session $session)
-    {
-    }
+    public function __construct(private readonly Session $session) {}
 
     public function start(): PkceCodes
     {
@@ -29,8 +27,8 @@ final class PkceFlow
 
         $this->session->put(self::SESSION_KEY, [
             'verifier' => $verifier,
-            'state'    => $state,
-            'nonce'    => $nonce,
+            'state' => $state,
+            'nonce' => $nonce,
         ]);
         $this->session->save();
 

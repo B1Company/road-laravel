@@ -22,14 +22,13 @@ final class OidcDiscovery
         private readonly ConfigRepository $config,
         private readonly CacheRepository $cache,
         private readonly HttpFactory $http,
-    ) {
-    }
+    ) {}
 
     /** @return array<string,mixed> */
     public function metadata(): array
     {
         $issuer = $this->issuerUrl();
-        $ttl    = (int) $this->config->get('road.api.jwks_ttl', 600);
+        $ttl = (int) $this->config->get('road.api.jwks_ttl', 600);
 
         $cached = $this->cache->remember(
             'road.oidc.discovery:'.$issuer,

@@ -15,9 +15,7 @@ use B1Road\Laravel\DTO\BusinessUnitDetail;
  */
 final class BusinessUnits
 {
-    public function __construct(private readonly HttpTransportInterface $http)
-    {
-    }
+    public function __construct(private readonly HttpTransportInterface $http) {}
 
     public function get(string $buId): BusinessUnitDetail
     {

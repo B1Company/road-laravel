@@ -22,9 +22,7 @@ final class ProxyPathFilter
     /**
      * @param  list<string>  $allowPatterns  e.g. `['organization/*', 'iam/identity/*']`
      */
-    public function __construct(private readonly array $allowPatterns)
-    {
-    }
+    public function __construct(private readonly array $allowPatterns) {}
 
     public function isAllowed(string $path): bool
     {

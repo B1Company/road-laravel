@@ -18,6 +18,5 @@ final class BusinessUnitDetail extends Data
         public ?string $joinCode,
         public string $createdAt,
         public string $iamScopeId,
-    ) {
-    }
+    ) {}
 }

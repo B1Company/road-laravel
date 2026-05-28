@@ -27,8 +27,7 @@ class EnsureRoadAuthenticated
         protected readonly TokenStore $tokenStore,
         protected readonly OidcProvider $oidc,
         protected readonly ContextResolver $resolver,
-    ) {
-    }
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -66,7 +65,7 @@ class EnsureRoadAuthenticated
     protected function unauthorized(Request $request): Response
     {
         if ($this->wantsJson($request)) {
-            $exception = new RoadAuthnException();
+            $exception = new RoadAuthnException;
 
             return new JsonResponse(
                 ['error' => $exception->toErrorBody()],

@@ -30,14 +30,14 @@ final class InstallCommand extends Command
 
         $this->info('Publishing config/road.php …');
         $this->call('vendor:publish', [
-            '--tag'      => 'road-config',
-            '--force'    => $force,
+            '--tag' => 'road-config',
+            '--force' => $force,
         ]);
 
         $this->info('Publishing Inertia JS provider …');
         $this->call('vendor:publish', [
-            '--tag'      => 'road-inertia',
-            '--force'    => $force,
+            '--tag' => 'road-inertia',
+            '--force' => $force,
         ]);
 
         $this->appendEnvStubs();
@@ -62,15 +62,15 @@ final class InstallCommand extends Command
 
         $contents = (string) file_get_contents($envPath);
         $additions = [
-            'ROAD_API_BASE_URL'        => 'https://api.road.b1.app',
-            'ROAD_API_VERSION'         => 'alpha',
-            'AUTH_SERVER_ISSUER_URL'   => '',
-            'AUTH_SERVER_AUDIENCE'     => '',
-            'AUTH_SERVER_CLIENT_ID'    => '',
+            'ROAD_API_BASE_URL' => 'https://api.road.b1.app',
+            'ROAD_API_VERSION' => 'alpha',
+            'AUTH_SERVER_ISSUER_URL' => '',
+            'AUTH_SERVER_AUDIENCE' => '',
+            'AUTH_SERVER_CLIENT_ID' => '',
             'AUTH_SERVER_CLIENT_SECRET' => '',
             'AUTH_SERVER_REDIRECT_URI' => '',
-            'ROAD_PROXY_ENABLED'       => 'true',
-            'ROAD_INERTIA_ENABLED'     => 'true',
+            'ROAD_PROXY_ENABLED' => 'true',
+            'ROAD_INERTIA_ENABLED' => 'true',
         ];
 
         $appended = [];

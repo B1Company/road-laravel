@@ -11,9 +11,7 @@ use Illuminate\Routing\Controller;
 
 final class AuthController extends Controller
 {
-    public function __construct(private readonly OidcProvider $oidc)
-    {
-    }
+    public function __construct(private readonly OidcProvider $oidc) {}
 
     public function login(Request $request): RedirectResponse
     {

@@ -15,8 +15,7 @@ final readonly class TokenSet
         public ?string $idToken,
         public int $expiresAt,
         public array $userPayload,
-    ) {
-    }
+    ) {}
 
     public function isExpired(int $now = 0): bool
     {
@@ -27,11 +26,11 @@ final readonly class TokenSet
     public function toArray(): array
     {
         return [
-            'accessToken'  => $this->accessToken,
+            'accessToken' => $this->accessToken,
             'refreshToken' => $this->refreshToken,
-            'idToken'      => $this->idToken,
-            'expiresAt'    => $this->expiresAt,
-            'userPayload'  => $this->userPayload,
+            'idToken' => $this->idToken,
+            'expiresAt' => $this->expiresAt,
+            'userPayload' => $this->userPayload,
         ];
     }
 

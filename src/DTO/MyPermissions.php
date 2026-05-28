@@ -20,6 +20,5 @@ final class MyPermissions extends Data
      */
     public function __construct(
         public array $byBusinessUnit,
-    ) {
-    }
+    ) {}
 }

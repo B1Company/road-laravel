@@ -5,6 +5,8 @@ declare(strict_types=1);
 use B1Road\Laravel\Facades\Road;
 use B1Road\Laravel\Testing\ActsAsRoadUser;
 use B1Road\Laravel\Testing\RoadScenario;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 
 uses(ActsAsRoadUser::class);
@@ -67,8 +69,8 @@ it('exposes BFF proxy at /road-api/* with the session Bearer attached', function
     );
     $this->actingAsRoadUser('u_proxy', 'p@b1.app', 'Proxy User');
 
-    \Illuminate\Support\Facades\Http::fake([
-        'api.road.test/organization/business-units/bu_proxy' => \Illuminate\Support\Facades\Http::response(
+    Http::fake([
+        'api.road.test/organization/business-units/bu_proxy' => Http::response(
             ['data' => ['id' => 'bu_proxy', 'name' => 'PB1']],
             200,
         ),
@@ -77,7 +79,7 @@ it('exposes BFF proxy at /road-api/* with the session Bearer attached', function
     $response = $this->getJson('/road-api/organization/business-units/bu_proxy');
     $response->assertOk()->assertJsonPath('data.id', 'bu_proxy');
 
-    \Illuminate\Support\Facades\Http::assertSent(function (\Illuminate\Http\Client\Request $req) {
+    Http::assertSent(function (Request $req) {
         return $req->hasHeader('Authorization', 'Bearer fake-u_proxy');
     });
 });

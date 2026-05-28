@@ -11,6 +11,5 @@ final class RoleRef extends Data
     public function __construct(
         public string $id,
         public string $name,
-    ) {
-    }
+    ) {}
 }

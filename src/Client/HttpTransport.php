@@ -26,8 +26,7 @@ final class HttpTransport implements HttpTransportInterface
         private readonly RoadContext $context,
         private readonly ConfigRepository $config,
         private readonly RoadTelemetry $telemetry,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  array<string,mixed>|null  $body
@@ -55,7 +54,7 @@ final class HttpTransport implements HttpTransportInterface
         $pending = $this->http
             ->withToken($token)
             ->withHeaders([
-                'Accept'       => 'application/json',
+                'Accept' => 'application/json',
                 'X-Request-Id' => $this->context->requestId(),
             ])
             ->timeout($timeout)
@@ -65,12 +64,12 @@ final class HttpTransport implements HttpTransportInterface
 
         try {
             $response = match ($upperMethod) {
-                'GET'    => $pending->get($url, $query ?? []),
-                'POST'   => $pending->asJson()->post($url, $body ?? []),
-                'PATCH'  => $pending->asJson()->patch($url, $body ?? []),
-                'PUT'    => $pending->asJson()->put($url, $body ?? []),
+                'GET' => $pending->get($url, $query ?? []),
+                'POST' => $pending->asJson()->post($url, $body ?? []),
+                'PATCH' => $pending->asJson()->patch($url, $body ?? []),
+                'PUT' => $pending->asJson()->put($url, $body ?? []),
                 'DELETE' => $pending->asJson()->delete($url, $body ?? []),
-                default  => throw new \InvalidArgumentException("Unsupported HTTP method: $method"),
+                default => throw new \InvalidArgumentException("Unsupported HTTP method: $method"),
             };
         } catch (Throwable $e) {
             $error = ErrorMapper::map(0, ['error' => ['code' => 'network_error', 'message' => $e->getMessage()]]);

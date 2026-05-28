@@ -56,10 +56,10 @@ abstract class RoadException extends RuntimeException
     public function toErrorBody(): array
     {
         return array_filter([
-            'code'      => $this->errorCode,
-            'message'   => $this->getMessage(),
+            'code' => $this->errorCode,
+            'message' => $this->getMessage(),
             'requestId' => $this->requestId,
-            'docs'      => $this->docsUrl,
+            'docs' => $this->docsUrl,
         ], fn ($v) => $v !== null);
     }
 

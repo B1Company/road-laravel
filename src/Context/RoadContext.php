@@ -37,7 +37,7 @@ final class RoadContext
 
     public function requestId(): string
     {
-        return $this->requestId ??= (string) new Ulid();
+        return $this->requestId ??= (string) new Ulid;
     }
 
     public function setRequestId(string $requestId): void

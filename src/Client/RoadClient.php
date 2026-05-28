@@ -22,9 +22,7 @@ class RoadClient
 
     private ?BusinessUnits $businessUnits = null;
 
-    public function __construct(private readonly HttpTransportInterface $http)
-    {
-    }
+    public function __construct(private readonly HttpTransportInterface $http) {}
 
     public function me(): Me
     {

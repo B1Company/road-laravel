@@ -13,6 +13,5 @@ final class CurrentUser extends Data
         public string $name,
         public string $email,
         public ?string $avatarUrl = null,
-    ) {
-    }
+    ) {}
 }

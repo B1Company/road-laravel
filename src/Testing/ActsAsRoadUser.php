@@ -39,9 +39,9 @@ trait ActsAsRoadUser
             idToken: null,
             expiresAt: time() + 3600,
             userPayload: [
-                'sub'   => $userId,
+                'sub' => $userId,
                 'email' => $user->email,
-                'name'  => $user->name,
+                'name' => $user->name,
             ],
         ));
 

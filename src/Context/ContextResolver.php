@@ -20,8 +20,7 @@ final class ContextResolver
     public function __construct(
         private readonly TokenStore $tokenStore,
         private readonly RoadContext $context,
-    ) {
-    }
+    ) {}
 
     /**
      * Populate the request-scoped RoadContext from the session's TokenSet.

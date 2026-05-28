@@ -19,6 +19,5 @@ final class MyBusinessUnits extends Data
         public DataCollection $memberships,
         #[DataCollectionOf(PendingInvitation::class)]
         public DataCollection $pendingInvitations,
-    ) {
-    }
+    ) {}
 }

@@ -23,8 +23,7 @@ final class RoadManager
     public function __construct(
         private readonly Container $container,
         private readonly RoadContext $context,
-    ) {
-    }
+    ) {}
 
     // -- Identity ----------------------------------------------------------
 

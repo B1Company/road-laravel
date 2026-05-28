@@ -19,6 +19,5 @@ final class Membership extends Data
         public string $joinedAt,
         #[DataCollectionOf(RoleRef::class)]
         public DataCollection $roles,
-    ) {
-    }
+    ) {}
 }

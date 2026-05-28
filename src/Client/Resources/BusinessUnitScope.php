@@ -19,8 +19,7 @@ final class BusinessUnitScope
     public function __construct(
         private readonly HttpTransportInterface $http,
         public readonly string $buId,
-    ) {
-    }
+    ) {}
 
     public function fetch(): BusinessUnitDetail
     {

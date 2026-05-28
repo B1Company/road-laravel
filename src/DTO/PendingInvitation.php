@@ -13,6 +13,5 @@ final class PendingInvitation extends Data
         public BusinessUnitSummary $businessUnit,
         public string $roleName,
         public string $expiresAt,
-    ) {
-    }
+    ) {}
 }

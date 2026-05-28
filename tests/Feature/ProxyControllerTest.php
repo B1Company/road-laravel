@@ -17,9 +17,9 @@ function seedSessionTokens(string $token = 'sess-bearer-123'): void
         idToken: null,
         expiresAt: time() + 3600,
         userPayload: [
-            'sub'   => 'u_proxy',
+            'sub' => 'u_proxy',
             'email' => 'p@example.com',
-            'name'  => 'Proxy User',
+            'name' => 'Proxy User',
         ],
     ));
 }
@@ -94,7 +94,6 @@ it('forwards POST bodies and content types intact', function () {
             && str_contains($body, 'my-bu');
     });
 });
-
 
 it('passes upstream non-2xx status through unchanged', function () {
     seedSessionTokens();

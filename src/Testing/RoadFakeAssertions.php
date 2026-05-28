@@ -17,9 +17,7 @@ use PHPUnit\Framework\Assert;
  */
 final class RoadFakeAssertions
 {
-    public function __construct(private readonly InMemoryBackend $backend)
-    {
-    }
+    public function __construct(private readonly InMemoryBackend $backend) {}
 
     public function assertCalled(string $method, string $path): void
     {

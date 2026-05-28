@@ -26,14 +26,14 @@ it('rejects path-traversal segments even within allow-listed prefixes', function
 
     expect($filter->isAllowed($hostile))->toBeFalse();
 })->with([
-    'dotdot segment'        => ['organization/../private'],
-    'dot segment'           => ['organization/./secrets'],
-    'leading dotdot'        => ['../organization'],
-    'encoded dotdot'        => ['organization/%2e%2e/private'],
-    'encoded dot'           => ['organization/%2e/secrets'],
-    'double slash'          => ['organization//double'],
-    'backslash'             => ['organization\\backdoor'],
-    'null byte injection'   => ["organization/bu\x00admin"],
+    'dotdot segment' => ['organization/../private'],
+    'dot segment' => ['organization/./secrets'],
+    'leading dotdot' => ['../organization'],
+    'encoded dotdot' => ['organization/%2e%2e/private'],
+    'encoded dot' => ['organization/%2e/secrets'],
+    'double slash' => ['organization//double'],
+    'backslash' => ['organization\\backdoor'],
+    'null byte injection' => ["organization/bu\x00admin"],
     'crlf header injection' => ["organization/bu\r\nX-Injected: 1"],
 ]);
 

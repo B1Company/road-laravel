@@ -10,9 +10,7 @@ final class SessionTokenStore implements TokenStore
 {
     private const SESSION_KEY = 'road.tokens';
 
-    public function __construct(private readonly Session $session)
-    {
-    }
+    public function __construct(private readonly Session $session) {}
 
     public function get(): ?TokenSet
     {

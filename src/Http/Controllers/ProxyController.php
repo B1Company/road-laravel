@@ -55,8 +55,7 @@ final class ProxyController extends Controller
         private readonly HttpFactory $http,
         private readonly RoadContext $context,
         private readonly ConfigRepository $config,
-    ) {
-    }
+    ) {}
 
     public function __invoke(Request $request, string $path = ''): Response
     {

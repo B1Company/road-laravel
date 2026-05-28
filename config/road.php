@@ -16,19 +16,19 @@ return [
     'environment' => env('ROAD_ENVIRONMENT', 'sandbox'),
 
     'api' => [
-        'base_url'   => env('ROAD_API_BASE_URL'),
-        'version'    => env('ROAD_API_VERSION', 'alpha'),
-        'timeout'    => (int) env('ROAD_API_TIMEOUT', 10),
-        'jwks_ttl'   => (int) env('ROAD_API_JWKS_TTL', 600),
+        'base_url' => env('ROAD_API_BASE_URL'),
+        'version' => env('ROAD_API_VERSION', 'alpha'),
+        'timeout' => (int) env('ROAD_API_TIMEOUT', 10),
+        'jwks_ttl' => (int) env('ROAD_API_JWKS_TTL', 600),
     ],
 
     'auth_server' => [
-        'issuer_url'    => env('AUTH_SERVER_ISSUER_URL'),
-        'audience'      => env('AUTH_SERVER_AUDIENCE'),
-        'client_id'     => env('AUTH_SERVER_CLIENT_ID'),
+        'issuer_url' => env('AUTH_SERVER_ISSUER_URL'),
+        'audience' => env('AUTH_SERVER_AUDIENCE'),
+        'client_id' => env('AUTH_SERVER_CLIENT_ID'),
         'client_secret' => env('AUTH_SERVER_CLIENT_SECRET'),
-        'redirect_uri'  => env('AUTH_SERVER_REDIRECT_URI'),
-        'scopes'        => ['openid', 'profile', 'email', 'offline_access'],
+        'redirect_uri' => env('AUTH_SERVER_REDIRECT_URI'),
+        'scopes' => ['openid', 'profile', 'email', 'offline_access'],
     ],
 
     /*
@@ -41,8 +41,8 @@ return [
 
     'proxy' => [
         'enabled' => (bool) env('ROAD_PROXY_ENABLED', true),
-        'prefix'  => env('ROAD_PROXY_PREFIX', 'road-api'),
-        'allow'   => [
+        'prefix' => env('ROAD_PROXY_PREFIX', 'road-api'),
+        'allow' => [
             'organization/*',
             'iam/identity/*',
             'iam/authorization/*',
@@ -60,14 +60,14 @@ return [
     'token_store' => env('ROAD_TOKEN_STORE', 'session'),
 
     'inertia' => [
-        'enabled'              => (bool) env('ROAD_INERTIA_ENABLED', true),
-        'share_user'           => true,
+        'enabled' => (bool) env('ROAD_INERTIA_ENABLED', true),
+        'share_user' => true,
         'share_business_units' => true,
     ],
 
     'debug' => [
         'header_enabled' => (bool) env('ROAD_DEBUG_HEADER', ! app()->environment('production')),
-        'log_channel'    => env('ROAD_LOG_CHANNEL', 'stack'),
+        'log_channel' => env('ROAD_LOG_CHANNEL', 'stack'),
     ],
 
 ];

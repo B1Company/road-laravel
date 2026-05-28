@@ -23,8 +23,7 @@ final class JwksCache
         private readonly CacheRepository $cache,
         private readonly HttpFactory $http,
         private readonly ConfigRepository $config,
-    ) {
-    }
+    ) {}
 
     public function get(): JWKSet
     {

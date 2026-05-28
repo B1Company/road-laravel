@@ -17,16 +17,15 @@ final readonly class RoadUser implements Authenticatable
         public string $name,
         public ?string $avatarUrl = null,
         public array $payload = [],
-    ) {
-    }
+    ) {}
 
     /** @return array<string,mixed> */
     public function toArray(): array
     {
         return [
-            'id'        => $this->id,
-            'email'     => $this->email,
-            'name'      => $this->name,
+            'id' => $this->id,
+            'email' => $this->email,
+            'name' => $this->name,
             'avatarUrl' => $this->avatarUrl,
         ];
     }
@@ -56,9 +55,7 @@ final readonly class RoadUser implements Authenticatable
         return '';
     }
 
-    public function setRememberToken($value): void
-    {
-    }
+    public function setRememberToken($value): void {}
 
     public function getRememberTokenName(): string
     {

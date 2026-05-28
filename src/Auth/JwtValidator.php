@@ -26,8 +26,7 @@ final class JwtValidator
     public function __construct(
         private readonly JwksCache $jwks,
         private readonly ConfigRepository $config,
-    ) {
-    }
+    ) {}
 
     /**
      * Verify signature + standard claims (iss, aud, exp, nbf). Returns the
@@ -43,7 +42,7 @@ final class JwtValidator
     public function verify(string $token): array
     {
         try {
-            $jws = (new JWSSerializerManager([new CompactSerializer()]))->unserialize($token);
+            $jws = (new JWSSerializerManager([new CompactSerializer]))->unserialize($token);
         } catch (Throwable $e) {
             throw new RoadAuthnException(
                 message: 'JWT is malformed.',
@@ -52,7 +51,7 @@ final class JwtValidator
             );
         }
 
-        $verifier = new JWSVerifier(new AlgorithmManager([new RS256(), new ES256()]));
+        $verifier = new JWSVerifier(new AlgorithmManager([new RS256, new ES256]));
 
         $verified = $verifier->verifyWithKeySet($jws, $this->jwks->get(), 0);
         if (! $verified) {

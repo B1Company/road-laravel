@@ -11,6 +11,5 @@ final readonly class PkceCodes
         public string $challenge,
         public string $state,
         public string $nonce,
-    ) {
-    }
+    ) {}
 }

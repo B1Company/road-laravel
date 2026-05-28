@@ -25,7 +25,7 @@ final class RoadScenario
 
     public static function make(): self
     {
-        return new self();
+        return new self;
     }
 
     public function withUser(
@@ -35,9 +35,9 @@ final class RoadScenario
         ?string $avatarUrl = null,
     ): self {
         $this->users[$id] = array_filter([
-            'id'        => $id,
-            'name'      => $name ?? $id,
-            'email'     => $email ?? $id.'@test.local',
+            'id' => $id,
+            'name' => $name ?? $id,
+            'email' => $email ?? $id.'@test.local',
             'avatarUrl' => $avatarUrl,
         ], fn ($v) => $v !== null);
 
@@ -54,15 +54,15 @@ final class RoadScenario
         ?string $iamScopeId = null,
     ): self {
         $this->businessUnits[$id] = [
-            'id'          => $id,
-            'name'        => $name ?? $id,
-            'slug'        => $slug ?? str_replace('_', '-', $id),
-            'status'      => 'active',
+            'id' => $id,
+            'name' => $name ?? $id,
+            'slug' => $slug ?? str_replace('_', '-', $id),
+            'status' => 'active',
             'memberCount' => 0,
             'memberLimit' => null,
-            'joinCode'    => null,
-            'createdAt'   => '2024-01-01T00:00:00Z',
-            'iamScopeId'  => $iamScopeId ?? 'scope_'.$id,
+            'joinCode' => null,
+            'createdAt' => '2024-01-01T00:00:00Z',
+            'iamScopeId' => $iamScopeId ?? 'scope_'.$id,
         ];
 
         return $this;
@@ -84,9 +84,9 @@ final class RoadScenario
         $this->userBusinessUnits[$userId] ??= ['userId' => $userId, 'memberships' => []];
         $this->userBusinessUnits[$userId]['memberships'][] = [
             'businessUnit' => ['id' => $bu['id'], 'name' => $bu['name'], 'slug' => $bu['slug']],
-            'status'       => 'active',
-            'joinedAt'     => '2024-01-01T00:00:00Z',
-            'roles'        => array_map(
+            'status' => 'active',
+            'joinedAt' => '2024-01-01T00:00:00Z',
+            'roles' => array_map(
                 fn (string $r): array => ['id' => 'r_'.$r, 'name' => $r],
                 $roles,
             ),
@@ -128,5 +128,4 @@ final class RoadScenario
     {
         return $this->userBusinessUnits[$userId] ?? ['userId' => $userId, 'memberships' => []];
     }
-
 }

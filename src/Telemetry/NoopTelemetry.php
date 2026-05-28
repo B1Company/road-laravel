@@ -11,11 +11,7 @@ use B1Road\Laravel\Exceptions\RoadException;
  */
 final class NoopTelemetry implements RoadTelemetry
 {
-    public function onRequest(TelemetryRequestEvent $event): void
-    {
-    }
+    public function onRequest(TelemetryRequestEvent $event): void {}
 
-    public function onError(RoadException $error, TelemetryRequestEvent $event): void
-    {
-    }
+    public function onError(RoadException $error, TelemetryRequestEvent $event): void {}
 }

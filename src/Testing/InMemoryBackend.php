@@ -19,9 +19,7 @@ final class InMemoryBackend
     /** @var list<array{method:string, path:string, body:?array<string,mixed>}> */
     public array $calls = [];
 
-    public function __construct(public readonly RoadScenario $scenario)
-    {
-    }
+    public function __construct(public readonly RoadScenario $scenario) {}
 
     /**
      * @param  array<string,mixed>|null  $body
@@ -51,7 +49,7 @@ final class InMemoryBackend
 
             return ['status' => 200, 'body' => [
                 'data' => [
-                    'memberships'        => $memberships,
+                    'memberships' => $memberships,
                     'pendingInvitations' => [],
                 ],
             ]];

@@ -15,9 +15,7 @@ use Illuminate\Contracts\Auth\UserProvider;
  */
 final class RoadUserProvider implements UserProvider
 {
-    public function __construct(private readonly RoadContext $context)
-    {
-    }
+    public function __construct(private readonly RoadContext $context) {}
 
     public function retrieveById($identifier): ?Authenticatable
     {
@@ -34,9 +32,7 @@ final class RoadUserProvider implements UserProvider
         return null;
     }
 
-    public function updateRememberToken(Authenticatable $user, $token): void
-    {
-    }
+    public function updateRememberToken(Authenticatable $user, $token): void {}
 
     /** @param  array<string,mixed>  $credentials */
     public function retrieveByCredentials(array $credentials): ?Authenticatable
@@ -50,7 +46,5 @@ final class RoadUserProvider implements UserProvider
         return false;
     }
 
-    public function rehashPasswordIfRequired(Authenticatable $user, array $credentials, bool $force = false): void
-    {
-    }
+    public function rehashPasswordIfRequired(Authenticatable $user, array $credentials, bool $force = false): void {}
 }

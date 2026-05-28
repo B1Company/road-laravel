@@ -29,9 +29,9 @@ it('calls /iam/identity/me and decodes into CurrentUser', function () {
     Http::fake([
         'api.road.test/iam/identity/me' => Http::response([
             'data' => [
-                'id'        => 'u_1',
-                'name'      => 'User 1',
-                'email'     => 'u1@example.com',
+                'id' => 'u_1',
+                'name' => 'User 1',
+                'email' => 'u1@example.com',
                 'avatarUrl' => 'https://cdn.test/u1.png',
             ],
         ], 200),
@@ -58,9 +58,9 @@ it('decodes /me/business-units into MyBusinessUnits', function () {
                 'memberships' => [
                     [
                         'businessUnit' => ['id' => 'bu_1', 'name' => 'B1', 'slug' => 'b1'],
-                        'status'       => 'active',
-                        'joinedAt'     => '2024-01-01T00:00:00Z',
-                        'roles'        => [['id' => 'r_1', 'name' => 'Owner']],
+                        'status' => 'active',
+                        'joinedAt' => '2024-01-01T00:00:00Z',
+                        'roles' => [['id' => 'r_1', 'name' => 'Owner']],
                     ],
                 ],
                 'pendingInvitations' => [],
@@ -80,15 +80,15 @@ it('returns a BusinessUnitDetail via Road::client()->businessUnits($buId)->fetch
     Http::fake([
         'api.road.test/organization/business-units/bu_1' => Http::response([
             'data' => [
-                'id'          => 'bu_1',
-                'name'        => 'B1',
-                'slug'        => 'b1',
-                'status'      => 'active',
+                'id' => 'bu_1',
+                'name' => 'B1',
+                'slug' => 'b1',
+                'status' => 'active',
                 'memberCount' => 3,
                 'memberLimit' => 50,
-                'joinCode'    => null,
-                'createdAt'   => '2024-01-01T00:00:00Z',
-                'iamScopeId'  => 'scope_1',
+                'joinCode' => null,
+                'createdAt' => '2024-01-01T00:00:00Z',
+                'iamScopeId' => 'scope_1',
             ],
         ], 200),
     ]);

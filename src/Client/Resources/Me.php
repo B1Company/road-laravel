@@ -17,9 +17,7 @@ use B1Road\Laravel\DTO\MyPermissions;
  */
 final class Me
 {
-    public function __construct(private readonly HttpTransportInterface $http)
-    {
-    }
+    public function __construct(private readonly HttpTransportInterface $http) {}
 
     public function get(): CurrentUser
     {
@@ -35,7 +33,7 @@ final class Me
         $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
 
         return MyBusinessUnits::from([
-            'memberships'        => $data['memberships'] ?? [],
+            'memberships' => $data['memberships'] ?? [],
             'pendingInvitations' => $data['pendingInvitations'] ?? [],
         ]);
     }
