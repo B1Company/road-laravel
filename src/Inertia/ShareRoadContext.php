@@ -25,9 +25,14 @@ use Symfony\Component\HttpFoundation\Response;
  * No JWT, no refresh token, no permissions — permissions are not shared by
  * default (they'd grow unbounded; React fetches via useMyPermissions on demand).
  *
- * Registration: add the `road.inertia` middleware alias to the Inertia
- * middleware group, OR include `\B1Road\Laravel\Inertia\ShareRoadContext::class`
- * directly. The middleware no-ops if inertiajs/inertia-laravel isn't installed.
+ * Registration: **auto-mounted into the `web` middleware group** by
+ * RoadServiceProvider when `inertiajs/inertia-laravel` is installed and
+ * `road.inertia.enabled` is true (the default). Integrators using a
+ * custom HTTP kernel that does not implement appendMiddlewareToGroup,
+ * or who explicitly opt out via the config flag, can register manually
+ * with the `road.inertia` alias or by adding the class to their Inertia
+ * middleware group. `road:doctor` surfaces the missing-middleware case
+ * with a clear next step.
  */
 final class ShareRoadContext
 {

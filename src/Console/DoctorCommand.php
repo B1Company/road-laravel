@@ -6,6 +6,7 @@ namespace B1Road\Laravel\Console;
 
 use B1Road\Laravel\Auth\AuthServer\OidcDiscovery;
 use B1Road\Laravel\Auth\JwksCache;
+use B1Road\Laravel\Inertia\ShareRoadContext;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
@@ -58,6 +59,7 @@ final class DoctorCommand extends Command
         $ok &= $this->checkJwks($jwks);
         $ok &= $this->checkMiddlewareAliases($router);
         $ok &= $this->checkProxyMounted($config, $router);
+        $ok &= $this->checkInertiaSharedProps($config, $router);
 
         $this->newLine();
         if ($ok) {
@@ -253,6 +255,52 @@ final class DoctorCommand extends Command
             }
         }
         $this->line("  ✗ Proxy NOT mounted at /$prefix — check road.proxy.enabled and route loading");
+
+        return false;
+    }
+
+    /**
+     * Inertia shared-props readiness. The auto-mount in
+     * RoadServiceProvider::boot() appends ShareRoadContext to the `web`
+     * middleware group when Inertia is installed; this check surfaces
+     * any path where that didn't happen — disabled by config, custom
+     * HTTP kernel that doesn't implement appendMiddlewareToGroup, or a
+     * consumer that explicitly removed the middleware after auto-mount.
+     *
+     * Without this middleware, every <RoadInertiaProvider> in the React
+     * tree reads `usePage().props.road` as `undefined` and the entire
+     * BFF integration goes sideways with a confusing JS error rather
+     * than a server-side diagnostic. Loud-at-boot is exactly the case
+     * this command exists for.
+     */
+    private function checkInertiaSharedProps(ConfigRepository $config, Router $router): bool
+    {
+        if (! class_exists(\Inertia\Inertia::class)) {
+            $this->line('  ⊘ Inertia not installed — skipping shared-props check');
+
+            return true;
+        }
+
+        if (! (bool) $config->get('road.inertia.enabled', true)) {
+            $this->line('  ⚠ Inertia auto-mount disabled (road.inertia.enabled=false) — `props.road` will not be shared.');
+            $this->line('     Set ROAD_INERTIA_ENABLED=true or add ShareRoadContext to your Inertia middleware group manually.');
+
+            return true;
+        }
+
+        $webGroup = $router->getMiddlewareGroups()['web'] ?? [];
+        if (in_array(ShareRoadContext::class, $webGroup, true)) {
+            $this->line('  ✓ Inertia shared props wired (props.road will be available in every Inertia render)');
+
+            return true;
+        }
+
+        $this->line('  ✗ ShareRoadContext middleware is NOT in the `web` middleware group.');
+        $this->line('     props.road will be undefined in your React tree and <RoadInertiaProvider> will fail.');
+        $this->line('     Likely causes:');
+        $this->line('       • A custom HTTP kernel that does not implement appendMiddlewareToGroup');
+        $this->line('       • Bootstrap code that explicitly removed the middleware after auto-mount');
+        $this->line('     Fix: add `\\B1Road\\Laravel\\Inertia\\ShareRoadContext::class` to your `web` middleware group.');
 
         return false;
     }

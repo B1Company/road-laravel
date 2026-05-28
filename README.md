@@ -72,6 +72,13 @@ export default function App({ children }) {
 work without any frontend JWT handling — they fetch through the
 `/road-api/*` BFF proxy using the Laravel session cookie.
 
+The `ShareRoadContext` middleware that hydrates `props.road` is
+**auto-mounted into the `web` middleware group** when
+`inertiajs/inertia-laravel` is installed — no manual middleware
+registration. Opt out with `ROAD_INERTIA_ENABLED=false` if you need to
+wire it manually (custom HTTP kernel, multiple Inertia setups, etc).
+`road:doctor` verifies the wiring on every run.
+
 ## How auth works (BFF model)
 
 ```

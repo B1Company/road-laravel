@@ -130,8 +130,14 @@ final class RoadServiceProvider extends ServiceProvider
         $this->registerAuthGuard();
         $this->loadRoutesFrom(__DIR__.'/../routes/auth.php');
 
-        if ($this->app->make(ConfigRepository::class)->get('road.proxy.enabled', true)) {
+        $config = $this->app->make(ConfigRepository::class);
+
+        if ($config->get('road.proxy.enabled', true)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/proxy.php');
+        }
+
+        if ($this->shouldAutoMountInertia($config)) {
+            $this->autoMountInertiaSharedProps();
         }
 
         if ($this->app->runningInConsole()) {
@@ -182,5 +188,36 @@ final class RoadServiceProvider extends ServiceProvider
                 $app->make(RoadContext::class),
             );
         });
+    }
+
+    /**
+     * Auto-mount only fires when Inertia is installed AND the integrator
+     * has not opted out via `road.inertia.enabled=false`. The class_exists
+     * probe keeps the SDK usable in non-Inertia Laravel apps without a
+     * hard runtime dep.
+     */
+    private function shouldAutoMountInertia(ConfigRepository $config): bool
+    {
+        return (bool) $config->get('road.inertia.enabled', true)
+            && class_exists(\Inertia\Inertia::class);
+    }
+
+    /**
+     * Append `ShareRoadContext` to the `web` middleware group so every
+     * Inertia render carries `props.road` automatically. Skips silently
+     * on Laravel kernels that don't implement appendMiddlewareToGroup
+     * (custom HTTP kernels in legacy apps); doctor's shared-props check
+     * surfaces that case with a clear next step.
+     *
+     * `appendMiddlewareToGroup` is idempotent — re-appending is a no-op,
+     * so this is safe across hot reloads and multi-provider boots.
+     */
+    private function autoMountInertiaSharedProps(): void
+    {
+        $kernel = $this->app->make(\Illuminate\Contracts\Http\Kernel::class);
+        if (! method_exists($kernel, 'appendMiddlewareToGroup')) {
+            return;
+        }
+        $kernel->appendMiddlewareToGroup('web', ShareRoadContext::class);
     }
 }
