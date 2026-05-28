@@ -262,8 +262,8 @@ $this->app->bind(RoadTelemetry::class, MyPulseTelemetry::class);
 ```
 
 Event shape matches `@b1-road/nestjs` and `@b1-road/react` —
-`{ method, path, status, durationMs, requestId, attempts }` — so one sink
-covers every Road SDK.
+`{ method, path, status, durationMs, requestId, traceId, attempts }` — so
+one sink covers every Road SDK.
 
 ## Artisan commands
 

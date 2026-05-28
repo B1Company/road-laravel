@@ -78,7 +78,7 @@ final class HttpTransport implements HttpTransportInterface
         }
 
         $status = $response->status();
-        $event = $this->buildEvent($upperMethod, $path, $status, $start);
+        $event = $this->buildEvent($upperMethod, $path, $status, $start, $response);
 
         if (! $response->successful()) {
             $error = ErrorMapper::map($status, $this->parseBody($response));
@@ -114,14 +114,20 @@ final class HttpTransport implements HttpTransportInterface
         return is_array($parsed) ? $parsed : null;
     }
 
-    private function buildEvent(string $method, string $path, int $status, float $startSeconds): TelemetryRequestEvent
+    private function buildEvent(string $method, string $path, int $status, float $startSeconds, ?Response $response = null): TelemetryRequestEvent
     {
+        // `traceparent` is the W3C trace id Road echoes; matches the
+        // `traceId` field @b1-road/react and @b1-road/nestjs surface so a
+        // single observability sink reads every SDK's event the same way.
+        $traceId = $response?->header('traceparent');
+
         return new TelemetryRequestEvent(
             method: $method,
             path: $path,
             status: $status,
             durationMs: (microtime(true) - $startSeconds) * 1000.0,
             requestId: $this->context->requestId(),
+            traceId: ($traceId === null || $traceId === '') ? null : $traceId,
             attempts: 1,
         );
     }

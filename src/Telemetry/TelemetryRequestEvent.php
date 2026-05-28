@@ -12,6 +12,7 @@ final readonly class TelemetryRequestEvent
         public int $status,
         public float $durationMs,
         public ?string $requestId,
+        public ?string $traceId,
         public int $attempts,
     ) {}
 }
