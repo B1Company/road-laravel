@@ -15,15 +15,21 @@ composer require b1-road/laravel
 php artisan road:install
 ```
 
+> Not yet published to Packagist — until the first release, require it from
+> the monorepo path repository. The command above is the post-publish form.
+
 Set five env vars in `.env` (the installer appends stubs for these):
 
 ```dotenv
 ROAD_API_BASE_URL=https://api.road.b1.app
 AUTH_SERVER_ISSUER_URL=https://auth.b1.app
-AUTH_SERVER_AUDIENCE=...
 AUTH_SERVER_CLIENT_ID=...
 AUTH_SERVER_CLIENT_SECRET=...
 AUTH_SERVER_REDIRECT_URI=https://your-app.com/auth/road/callback
+
+# Optional — set only if your Auth Server issues project-scoped (audience'd)
+# tokens. Left blank, the audience is neither requested nor validated.
+AUTH_SERVER_AUDIENCE=
 ```
 
 Verify the wiring:
@@ -294,9 +300,10 @@ The full config shape is published to `config/road.php`:
 ## Naming note
 
 This SDK refers to the identity provider as **"Auth Server"** in all
-public-facing surfaces (config keys, error messages, public types).
-Internally the implementation talks to Zitadel; that is an implementation
-detail of the Road platform, not an integrator concern.
+public-facing surfaces (config keys, error messages, public types). The
+concrete OIDC provider behind it is an implementation detail of the Road
+platform, not an integrator concern — your integration targets the generic
+Auth Server contract, never a specific vendor.
 
 ## Troubleshooting
 
@@ -312,9 +319,9 @@ Server's `Date` header. Anything above 30 seconds breaks JWT
 validation. Fix: NTP sync.
 
 **Auth Server returns `redirect_uri_mismatch`.** The `redirect_uri` in
-your `.env` doesn't match what's registered in the Auth Server console.
-`/eduzz-callback` (see internal skill) automates the registration step
-for Eduzz-managed environments.
+your `.env` doesn't exactly match a redirect URI registered for your OIDC
+app in the Auth Server console. Register the exact callback URL — scheme,
+host, port, and path must all match — and retry.
 
 **401 on every `/road-api/*` call.** The session is missing or expired.
 Try visiting `/auth/road/login` directly in the browser. If that
