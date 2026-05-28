@@ -15,7 +15,7 @@ it('lets a road-protected route resolve Road::user() and Road::client()->me() vi
         ->withBusinessUnit('bu_1', name: 'B1', slug: 'b1')
         ->withMember('bu_1', 'u_owner');
 
-    Road::fake($scenario);
+    $fake = Road::fake($scenario);
     $this->actingAsRoadUser('u_owner', 'eduardo@b1.app', 'Eduardo');
 
     Route::middleware('road')->get('/whoami', fn () => Road::user()?->toArray());
@@ -36,8 +36,8 @@ it('lets a road-protected route resolve Road::user() and Road::client()->me() vi
 
     $this->getJson('/my-bus')->assertOk()->assertJsonPath('count', 1);
 
-    Road::assertCalled('GET', '/iam/identity/me');
-    Road::assertCalled('GET', '/me/business-units');
+    $fake->assertCalled('GET', '/iam/identity/me');
+    $fake->assertCalled('GET', '/me/business-units');
 });
 
 it('returns 401 JSON on a road-protected api route without a session', function () {

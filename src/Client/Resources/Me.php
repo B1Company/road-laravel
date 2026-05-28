@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel\Client\Resources;
 
-use B1Road\Laravel\Client\HttpTransport;
+use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\DTO\CurrentUser;
 use B1Road\Laravel\DTO\MyBusinessUnits;
 use B1Road\Laravel\DTO\MyPermissions;
@@ -17,7 +17,7 @@ use B1Road\Laravel\DTO\MyPermissions;
  */
 final class Me
 {
-    public function __construct(private readonly HttpTransport $http)
+    public function __construct(private readonly HttpTransportInterface $http)
     {
     }
 

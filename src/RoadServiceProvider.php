@@ -14,6 +14,7 @@ use B1Road\Laravel\Auth\JwtValidator;
 use B1Road\Laravel\Auth\RoadGuard;
 use B1Road\Laravel\Auth\RoadUserProvider;
 use B1Road\Laravel\Client\HttpTransport;
+use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\Client\RoadClient;
 use B1Road\Laravel\Console\DoctorCommand;
 use B1Road\Laravel\Console\InstallCommand;
@@ -24,6 +25,9 @@ use B1Road\Laravel\Http\Middleware\EnsureRoadAuthenticated;
 use B1Road\Laravel\Http\Middleware\EnsureRoadAuthenticatedOptional;
 use B1Road\Laravel\Http\Middleware\HandleRoadExceptions;
 use B1Road\Laravel\Inertia\ShareRoadContext;
+use B1Road\Laravel\Telemetry\NoopTelemetry;
+use B1Road\Laravel\Telemetry\RoadTelemetry;
+use B1Road\Laravel\Testing\FakeRoadClientFactory;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -98,17 +102,26 @@ final class RoadServiceProvider extends ServiceProvider
             return new RoadManager($app, $app->make(RoadContext::class));
         });
 
+        // Telemetry — default Noop. Integrators bind their own implementation
+        // (Pulse, APM, custom log channel) in their AppServiceProvider.
+        $this->app->singletonIf(RoadTelemetry::class, NoopTelemetry::class);
+
         $this->app->scoped(HttpTransport::class, function (Application $app): HttpTransport {
             return new HttpTransport(
                 $app->make(HttpFactory::class),
                 $app->make(RoadContext::class),
                 $app->make(ConfigRepository::class),
+                $app->make(RoadTelemetry::class),
             );
         });
+        $this->app->scoped(HttpTransportInterface::class, fn (Application $app) => $app->make(HttpTransport::class));
 
         $this->app->scoped(RoadClient::class, function (Application $app): RoadClient {
-            return new RoadClient($app->make(HttpTransport::class));
+            return new RoadClient($app->make(HttpTransportInterface::class));
         });
+
+        // Test harness — the manager resolves this when Road::fake() is called.
+        $this->app->singleton(FakeRoadClientFactory::class);
     }
 
     public function boot(): void

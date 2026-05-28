@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel\Testing;
 
-use BadMethodCallException;
-
 /**
  * Fluent test-fixture builder. Mirrors `apps/sdks/road-nestjs/src/testing/scenario.ts`
  * — same shape so tests can be ported between SDKs by transliteration.
  *
- * MVP surface: `withUser`, `withBusinessUnit`. Members/roles/invitations
- * declared but throw "available in a follow-up release" until the full
- * client surface lands.
+ * MVP surface: `withUser`, `withBusinessUnit`, `withMember`. Role,
+ * invitation, and authorize fixtures arrive with the full client
+ * surface follow-up.
  */
 final class RoadScenario
 {
@@ -131,24 +129,4 @@ final class RoadScenario
         return $this->userBusinessUnits[$userId] ?? ['userId' => $userId, 'memberships' => []];
     }
 
-    public function withRole(): never
-    {
-        throw new BadMethodCallException(
-            'RoadScenario::withRole() is reserved for a follow-up release (full client surface).'
-        );
-    }
-
-    public function withInvitation(): never
-    {
-        throw new BadMethodCallException(
-            'RoadScenario::withInvitation() is reserved for a follow-up release (full client surface).'
-        );
-    }
-
-    public function withAuthorize(): never
-    {
-        throw new BadMethodCallException(
-            'RoadScenario::withAuthorize() is reserved for a follow-up release (authorization primitives).'
-        );
-    }
 }
