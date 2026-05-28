@@ -107,11 +107,9 @@ it('redirects html visitors to the login URL with intended preserved', function 
     expect($location)->toContain('intended=');
 });
 
-it('rejects a callback whose state does not match the session', function () {
+it('redirects an HTML callback whose state does not match back to login with error', function () {
     $this->fixture->fakeHttp(tokenResponse: []);
     $this->get('/auth/road/login');
-
-    $this->withoutExceptionHandling();
 
     $this->fixture->fakeHttp(tokenResponse: [
         'access_token' => 'x',
@@ -119,6 +117,25 @@ it('rejects a callback whose state does not match the session', function () {
         'expires_in'   => 60,
     ]);
 
-    expect(fn () => $this->get('/auth/road/callback?code=fake&state=not-the-real-state'))
-        ->toThrow(\B1Road\Laravel\Exceptions\RoadAuthnException::class);
+    $response = $this->get('/auth/road/callback?code=fake&state=not-the-real-state');
+    $response->assertStatus(302);
+
+    $location = (string) $response->headers->get('Location');
+    expect($location)->toContain('/auth/road/login');
+    expect($location)->toContain('error=oidc_state_mismatch');
+});
+
+it('returns json on a state-mismatched callback when the caller wants json', function () {
+    $this->fixture->fakeHttp(tokenResponse: []);
+    $this->get('/auth/road/login');
+
+    $this->fixture->fakeHttp(tokenResponse: [
+        'access_token' => 'x',
+        'id_token'     => $this->fixture->issueIdToken(),
+        'expires_in'   => 60,
+    ]);
+
+    $this->getJson('/auth/road/callback?code=fake&state=not-the-real-state')
+        ->assertStatus(401)
+        ->assertJsonPath('error.code', 'oidc_state_mismatch');
 });

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace B1Road\Laravel\Http\Controllers;
 
 use B1Road\Laravel\Context\RoadContext;
+use B1Road\Laravel\Http\ProxyPathFilter;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\PendingRequest;
@@ -98,30 +99,9 @@ final class ProxyController extends Controller
     private function isPathAllowed(string $path): bool
     {
         /** @var list<string> $allow */
-        $allow = (array) $this->config->get('road.proxy.allow', []);
-        if ($allow === []) {
-            return true;
-        }
+        $allow = array_values(array_map('strval', (array) $this->config->get('road.proxy.allow', [])));
 
-        $candidate = ltrim($path, '/');
-        foreach ($allow as $pattern) {
-            if ($this->matches((string) $pattern, $candidate)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function matches(string $pattern, string $candidate): bool
-    {
-        // Convert glob-ish pattern (`organization/*`) to regex. `*` matches
-        // anything except `?` and `#`; intentionally permissive so nested
-        // paths like `organization/business-units/abc/members` match
-        // `organization/*`.
-        $regex = '#^'.str_replace('\\*', '.*', preg_quote($pattern, '#')).'$#';
-
-        return (bool) preg_match($regex, $candidate);
+        return (new ProxyPathFilter($allow))->isAllowed($path);
     }
 
     private function buildUpstreamUrl(string $path, Request $request): string

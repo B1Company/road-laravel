@@ -33,12 +33,31 @@ final class JwksCache
 
         /** @var array<string,mixed> $data */
         $data = $this->cache->remember(
-            'road.oidc.jwks:'.$url,
+            $this->cacheKey($url),
             $ttl,
             fn (): array => $this->fetch($url),
         );
 
         return JWKSet::createFromKeyData($data);
+    }
+
+    /**
+     * Bust the cached JWKS and re-fetch immediately. Called by
+     * `JwtValidator` when signature verification fails — handles the
+     * case where the Auth Server rotated keys mid-cache and the
+     * incoming JWT was signed with a kid we haven't seen yet.
+     */
+    public function refresh(): JWKSet
+    {
+        $url = $this->discovery->jwksUri();
+        $this->cache->forget($this->cacheKey($url));
+
+        return $this->get();
+    }
+
+    private function cacheKey(string $url): string
+    {
+        return 'road.oidc.jwks:'.$url;
     }
 
     /** @return array<string,mixed> */

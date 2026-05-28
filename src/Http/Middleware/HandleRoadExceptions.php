@@ -8,14 +8,24 @@ use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\Exceptions\RoadException;
 use Closure;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Throwable;
 
 /**
- * Converts thrown RoadException subclasses into JSON `{ error: {...} }`
- * responses with the same shape NestJS + React emit. Non-Road exceptions
- * pass through unchanged.
+ * Converts thrown RoadException subclasses into the right response
+ * shape for the caller:
+ *
+ *   - API caller (Accept: application/json, XHR, /road-api/*):
+ *     `{ error: { code, message, requestId, docs? } }` with the
+ *     exception's httpStatus().
+ *   - Browser caller (Accept: text/html):
+ *     for 401-class errors, redirect back to the login URL with
+ *     `?intended=<current-url>&error=<code>`; for other errors,
+ *     redirect back to "/" with a flash message under
+ *     `errors.road`.
+ *
+ * Non-Road exceptions pass through unchanged.
  */
 final class HandleRoadExceptions
 {
@@ -31,13 +41,13 @@ final class HandleRoadExceptions
 
             return $response;
         } catch (RoadException $e) {
-            return $this->toJson($e);
-        } catch (Throwable $e) {
-            throw $e;
+            return $this->wantsJson($request)
+                ? $this->jsonResponse($e)
+                : $this->htmlRedirect($request, $e);
         }
     }
 
-    private function toJson(RoadException $e): JsonResponse
+    private function jsonResponse(RoadException $e): JsonResponse
     {
         $body = $e->toErrorBody();
         if (! isset($body['requestId'])) {
@@ -45,5 +55,33 @@ final class HandleRoadExceptions
         }
 
         return new JsonResponse(['error' => $body], $e->httpStatus());
+    }
+
+    private function htmlRedirect(Request $request, RoadException $e): Response
+    {
+        if ($e->httpStatus() === 401) {
+            $loginUrl = url('/auth/road/login').'?'.http_build_query([
+                'intended' => $request->fullUrl(),
+                'error'    => $e->errorCode(),
+            ]);
+
+            return new RedirectResponse($loginUrl);
+        }
+
+        $request->session()->flash('errors.road', [
+            'code'      => $e->errorCode(),
+            'message'   => $e->getMessage(),
+            'requestId' => $this->context->requestId(),
+        ]);
+
+        return new RedirectResponse('/');
+    }
+
+    private function wantsJson(Request $request): bool
+    {
+        return $request->expectsJson()
+            || $request->wantsJson()
+            || $request->ajax()
+            || $request->is('road-api/*');
     }
 }

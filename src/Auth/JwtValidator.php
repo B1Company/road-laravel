@@ -33,6 +33,11 @@ final class JwtValidator
      * Verify signature + standard claims (iss, aud, exp, nbf). Returns the
      * verified payload (claims) on success.
      *
+     * On signature failure we force-refresh the JWKS once and retry, to
+     * handle the case where the Auth Server rotated keys mid-cache and
+     * the incoming JWT was signed with a kid we haven't seen yet. This is
+     * the standard remediation for the OIDC "kid mismatch under TTL" trap.
+     *
      * @return array<string,mixed>
      */
     public function verify(string $token): array
@@ -48,9 +53,15 @@ final class JwtValidator
         }
 
         $verifier = new JWSVerifier(new AlgorithmManager([new RS256(), new ES256()]));
-        $jwks = $this->jwks->get();
 
-        if (! $verifier->verifyWithKeySet($jws, $jwks, 0)) {
+        $verified = $verifier->verifyWithKeySet($jws, $this->jwks->get(), 0);
+        if (! $verified) {
+            // Retry once with a force-refreshed JWKS — covers the
+            // mid-TTL key-rotation case.
+            $verified = $verifier->verifyWithKeySet($jws, $this->jwks->refresh(), 0);
+        }
+
+        if (! $verified) {
             throw new RoadAuthnException(
                 message: 'JWT signature verification failed.',
                 errorCode: 'invalid_token',
