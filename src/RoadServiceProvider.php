@@ -25,6 +25,8 @@ use B1Road\Laravel\Exceptions\RoadException;
 use B1Road\Laravel\Http\Middleware\EnsureRoadAuthenticated;
 use B1Road\Laravel\Http\Middleware\EnsureRoadAuthenticatedOptional;
 use B1Road\Laravel\Http\Middleware\HandleRoadExceptions;
+use B1Road\Laravel\Http\Middleware\RequirePermission;
+use B1Road\Laravel\Http\Middleware\ResolveAttributePermissions;
 use B1Road\Laravel\Inertia\ShareRoadContext;
 use B1Road\Laravel\Telemetry\NoopTelemetry;
 use B1Road\Laravel\Telemetry\RoadTelemetry;
@@ -173,6 +175,8 @@ final class RoadServiceProvider extends ServiceProvider
         $router->aliasMiddleware('road.optional', EnsureRoadAuthenticatedOptional::class);
         $router->aliasMiddleware('road.errors', HandleRoadExceptions::class);
         $router->aliasMiddleware('road.inertia', ShareRoadContext::class);
+        $router->aliasMiddleware('road.permission', RequirePermission::class);
+        $router->aliasMiddleware('road.permission.attribute', ResolveAttributePermissions::class);
     }
 
     /**

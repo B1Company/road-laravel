@@ -226,10 +226,17 @@ final class DoctorCommand extends Command
     private function checkMiddlewareAliases(Router $router): bool
     {
         $aliases = $router->getMiddleware();
-        $expected = ['road', 'road.optional', 'road.errors', 'road.inertia'];
+        $expected = [
+            'road',
+            'road.optional',
+            'road.errors',
+            'road.inertia',
+            'road.permission',
+            'road.permission.attribute',
+        ];
         $missing = array_diff($expected, array_keys($aliases));
         if ($missing === []) {
-            $this->line('  ✓ Middleware aliases registered (road, road.optional, road.errors, road.inertia)');
+            $this->line('  ✓ Middleware aliases registered ('.implode(', ', $expected).')');
 
             return true;
         }
