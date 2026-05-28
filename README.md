@@ -120,6 +120,77 @@ Members / Roles / Invitations / IAM control plane methods will be added
 in the next release — they are intentionally *not* stubbed so your IDE
 autocomplete never offers a method that doesn't work.
 
+## Authorization
+
+Use Road's permission system on **your own custom routes**, not just
+when proxying Road API calls. Three integrator entry points, all
+backed by a single enforcement code path:
+
+### Middleware string form (closures, inline routes)
+
+```php
+use B1Road\Laravel\Facades\Road;
+
+Route::middleware(['road.errors', 'road', 'road.permission:read,Member,buId'])
+    ->get('/bus/{buId}/members', fn (string $buId) => MyRepo::members($buId));
+```
+
+The args are `action, Subject, scopeSource`. `scopeSource` is a route
+parameter name by default (`buId`); prefix with `input:` to pull from
+the request body/query (`input:business_unit_id`).
+
+### PHP attribute (controllers)
+
+```php
+use B1Road\Laravel\Attributes\RequirePermission;
+use B1Road\Laravel\Authorization\{Action, Subject};
+
+class MembersController
+{
+    #[RequirePermission(Action::Read, Subject::Member, in: 'buId')]
+    public function index(string $buId): JsonResponse { /* ... */ }
+
+    #[RequirePermission(Action::Manage, Subject::Member, in: 'buId')]
+    public function destroy(string $buId, string $memberId): JsonResponse { /* ... */ }
+}
+```
+
+Apply `road.permission.attribute` middleware in the route group to
+enable enforcement; the attribute also works at class level (with
+`#[SkipAuthorization]` overriding for individual methods).
+
+### Programmatic (anywhere)
+
+```php
+// Boolean predicate
+if (! Road::can(Action::Read, Subject::Member)->in($buId)->check()) {
+    return abort(403);
+}
+
+// Throws on deny with a structured DecisionTrace
+Road::assert(Road::can(Action::Update, Subject::Role)->in($buId));
+
+// Single round-trip for multiple checks
+[$canRead, $canUpdate, $canDelete] = Road::canMany([
+    Road::can(Action::Read,   Subject::Member),
+    Road::can(Action::Update, Subject::Member),
+    Road::can(Action::Delete, Subject::Member),
+])->in($buId)->resolve();
+
+// Inspect the decision (the "why" — same shape every Road SDK surfaces)
+$trace = Road::can(Action::Read, Subject::Member)->in($buId)->trace();
+// $trace->verdict, $trace->grants, $trace->reason, ...
+```
+
+### The permission algebra
+
+Permissions are `"$action:$Subject"` strings. The enum cases match the
+wire form exactly: `Action::Read->value === 'read'`,
+`Subject::Member->value === 'Member'`. The wildcard `'*'` grants
+everything in scope; `manage:Subject` grants every CRUD verb on that
+Subject. Use `->raw('custom:Permission')` on a `Can` builder for
+platform-defined permissions outside Road's canonical set.
+
 ## Errors
 
 Every error thrown by the SDK is a `RoadException` subclass:
@@ -127,6 +198,7 @@ Every error thrown by the SDK is a `RoadException` subclass:
 | Class | HTTP | `error.code` | When |
 |---|---|---|---|
 | `RoadAuthnException` | 401 | `unauthenticated` (or specific OIDC code) | No session, expired session, OIDC validation failure |
+| `RoadAuthzException` | 403 | `permission_denied` | Authenticated but no grant. Carries a `DecisionTrace` rendered into the message. |
 | `RoadNotFoundException` | 404 | `not_found` | Road API said 404 |
 | `RoadNetworkException` | 502 | `network_error` | Unreachable upstream |
 | `RoadApiException` | varies | varies | Catch-all for non-mapped statuses |
