@@ -7,10 +7,14 @@ use B1Road\Laravel\Http\Controllers\BusinessUnitController;
 use B1Road\Laravel\Http\Controllers\WhoamiController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('road.errors')->prefix('auth/road')->group(function (): void {
-    Route::get('/login',   [AuthController::class, 'login'])->name('road.auth.login');
+// The OIDC browser flow needs the `web` group: StartSession (PKCE
+// state + the BFF token store live in the session) and cookie
+// handling. Without it `$request->session()` is unset and the login
+// dance cannot persist state across the redirect → callback hop.
+Route::middleware(['web', 'road.errors'])->prefix('auth/road')->group(function (): void {
+    Route::get('/login', [AuthController::class, 'login'])->name('road.auth.login');
     Route::get('/callback', [AuthController::class, 'callback'])->name('road.auth.callback');
-    Route::post('/logout',  [AuthController::class, 'logout'])->name('road.auth.logout');
+    Route::post('/logout', [AuthController::class, 'logout'])->name('road.auth.logout');
 });
 
 Route::middleware(['road.errors', 'road'])->group(function (): void {

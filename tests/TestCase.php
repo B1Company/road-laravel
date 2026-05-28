@@ -4,14 +4,26 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel\Tests;
 
+use B1Road\Laravel\Facades\Road;
 use B1Road\Laravel\RoadServiceProvider;
+use Inertia\ServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
+use Spatie\LaravelData\LaravelDataServiceProvider;
 
 abstract class TestCase extends Orchestra
 {
     protected function getPackageProviders($app): array
     {
         return [
+            // Testbench disables package auto-discovery, so the SDK's own
+            // dependencies must be registered explicitly. Without
+            // LaravelDataServiceProvider, config('data') is null and the
+            // spatie/laravel-data DTOs blow up on hydration.
+            LaravelDataServiceProvider::class,
+            // inertiajs/inertia-laravel is a dev dependency so the
+            // Inertia auto-mount + shared-props path is exercised against
+            // the real package, not a stub.
+            ServiceProvider::class,
             RoadServiceProvider::class,
         ];
     }
@@ -19,12 +31,15 @@ abstract class TestCase extends Orchestra
     protected function getPackageAliases($app): array
     {
         return [
-            'Road' => \B1Road\Laravel\Facades\Road::class,
+            'Road' => Road::class,
         ];
     }
 
     protected function defineEnvironment($app): void
     {
+        // EncryptCookies (pulled in by the `web` group on the auth
+        // routes) requires an application key.
+        $app['config']->set('app.key', 'base64:AckfSECXAvnyTQViQF/IST3yMcgGW36C5kP+JTxRRMc=');
         $app['config']->set('road.api.base_url', 'https://api.road.test');
         $app['config']->set('road.api.version', 'alpha');
         $app['config']->set('road.auth_server.issuer_url', 'https://auth.test');

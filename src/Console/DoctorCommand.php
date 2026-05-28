@@ -12,6 +12,7 @@ use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Routing\Router;
+use Inertia\Inertia;
 use Throwable;
 
 /**
@@ -113,7 +114,7 @@ final class DoctorCommand extends Command
             $this->line("  ⚠ redirect_uri uses http on a public host ($host) — most Auth Servers require https");
         }
 
-        $this->line("  ✓ redirect_uri shape OK ($scheme://$host…) — verify it's registered in the Auth Server console");
+        $this->line("  ✓ redirect_uri shape OK ({$scheme}://{$host}…) — verify it's registered in the Auth Server console");
 
         return true;
     }
@@ -246,7 +247,10 @@ final class DoctorCommand extends Command
         }
 
         $prefix = (string) $config->get('road.proxy.prefix', 'road-api');
-        foreach ($router->getRoutes() as $route) {
+        // ->getRoutes() on the collection returns a plain array<Route>,
+        // which is cleanly iterable (the RouteCollectionInterface itself
+        // isn't typed as iterable for static analysis).
+        foreach ($router->getRoutes()->getRoutes() as $route) {
             $uri = ltrim($route->uri(), '/');
             if (str_starts_with($uri, $prefix.'/') || $uri === $prefix) {
                 $this->line("  ✓ Proxy mounted at /$prefix");
@@ -275,7 +279,7 @@ final class DoctorCommand extends Command
      */
     private function checkInertiaSharedProps(ConfigRepository $config, Router $router): bool
     {
-        if (! class_exists(\Inertia\Inertia::class)) {
+        if (! class_exists(Inertia::class)) {
             $this->line('  ⊘ Inertia not installed — skipping shared-props check');
 
             return true;

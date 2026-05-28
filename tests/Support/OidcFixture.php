@@ -31,6 +31,20 @@ final class OidcFixture
 
     public JWK $publicKey;
 
+    /**
+     * Mutable token-endpoint response. The Http::fake stub for
+     * `/oauth/v2/token` reads this via a closure, so a test can call
+     * fakeHttp() ONCE (before driving /login to learn the nonce) and
+     * then set the real token payload before the callback — without a
+     * second fakeHttp() call. Laravel's Http::fake() *merges* stub maps
+     * across calls and the earliest matching stub wins, so calling it
+     * twice would let an initial empty token response shadow the real
+     * one. This indirection sidesteps that footgun entirely.
+     *
+     * @var array<string,mixed>
+     */
+    public array $tokenResponse = [];
+
     public function __construct()
     {
         $this->privateKey = JWKFactory::createRSAKey(
@@ -44,16 +58,16 @@ final class OidcFixture
     public function discoveryDoc(): array
     {
         return [
-            'issuer'                                 => $this->issuer,
-            'authorization_endpoint'                 => $this->issuer.'/oauth/v2/authorize',
-            'token_endpoint'                         => $this->issuer.'/oauth/v2/token',
-            'jwks_uri'                               => $this->issuer.'/oauth/v2/keys',
-            'end_session_endpoint'                   => $this->issuer.'/oidc/v1/end_session',
-            'response_types_supported'               => ['code'],
-            'grant_types_supported'                  => ['authorization_code', 'refresh_token'],
-            'subject_types_supported'                => ['public'],
-            'id_token_signing_alg_values_supported'  => ['RS256'],
-            'token_endpoint_auth_methods_supported'  => ['client_secret_post'],
+            'issuer' => $this->issuer,
+            'authorization_endpoint' => $this->issuer.'/oauth/v2/authorize',
+            'token_endpoint' => $this->issuer.'/oauth/v2/token',
+            'jwks_uri' => $this->issuer.'/oauth/v2/keys',
+            'end_session_endpoint' => $this->issuer.'/oidc/v1/end_session',
+            'response_types_supported' => ['code'],
+            'grant_types_supported' => ['authorization_code', 'refresh_token'],
+            'subject_types_supported' => ['public'],
+            'id_token_signing_alg_values_supported' => ['RS256'],
+            'token_endpoint_auth_methods_supported' => ['client_secret_post'],
         ];
     }
 
@@ -71,17 +85,17 @@ final class OidcFixture
     public function issueIdToken(array $claims = []): string
     {
         $payload = array_merge([
-            'iss'   => $this->issuer,
-            'aud'   => $this->audience,
-            'sub'   => 'u_test',
+            'iss' => $this->issuer,
+            'aud' => $this->audience,
+            'sub' => 'u_test',
             'email' => 'test@example.com',
-            'name'  => 'Test User',
-            'exp'   => time() + 3600,
-            'nbf'   => time() - 5,
-            'iat'   => time(),
+            'name' => 'Test User',
+            'exp' => time() + 3600,
+            'nbf' => time() - 5,
+            'iat' => time(),
         ], $claims);
 
-        $algorithmManager = new AlgorithmManager([new RS256()]);
+        $algorithmManager = new AlgorithmManager([new RS256]);
         $builder = new JWSBuilder($algorithmManager);
 
         $jws = $builder
@@ -90,22 +104,27 @@ final class OidcFixture
             ->addSignature($this->privateKey, ['alg' => 'RS256', 'kid' => $this->kid])
             ->build();
 
-        return (new CompactSerializer())->serialize($jws);
+        return (new CompactSerializer)->serialize($jws);
     }
 
     /**
      * Wire up Http::fake() so OidcProvider/OidcDiscovery/JwksCache talk to
-     * us instead of the network. `$tokenResponse` is what /oauth/v2/token
-     * returns (typically `['access_token' => ..., 'id_token' => ...]`).
+     * us instead of the network. The token-endpoint response is read
+     * lazily from {@see $tokenResponse} at request time, so a test can
+     * call this once and adjust the token payload later (after learning
+     * the nonce from the login redirect) without a second fakeHttp()
+     * call — see the property docblock for why that matters.
      *
-     * @param  array<string,mixed>  $tokenResponse
+     * @param  array<string,mixed>  $tokenResponse  Initial token payload (optional).
      */
-    public function fakeHttp(array $tokenResponse): void
+    public function fakeHttp(array $tokenResponse = []): void
     {
+        $this->tokenResponse = $tokenResponse;
+
         Http::fake([
             $this->issuer.'/.well-known/openid-configuration' => Http::response($this->discoveryDoc(), 200),
-            $this->issuer.'/oauth/v2/keys'                    => Http::response($this->jwksDoc(), 200),
-            $this->issuer.'/oauth/v2/token'                   => Http::response($tokenResponse, 200),
+            $this->issuer.'/oauth/v2/keys' => Http::response($this->jwksDoc(), 200),
+            $this->issuer.'/oauth/v2/token' => fn () => Http::response($this->tokenResponse, 200),
             // Catch-all so an unstubbed call surfaces clearly in tests.
             '*' => function (HttpRequest $request) {
                 return Http::response(

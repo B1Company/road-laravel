@@ -8,19 +8,19 @@ use B1Road\Laravel\Tests\Support\OidcFixture;
 use Illuminate\Support\Facades\Route;
 
 beforeEach(function () {
-    $this->fixture = new OidcFixture();
+    $this->fixture = new OidcFixture;
 
     config([
-        'road.auth_server.issuer_url'    => $this->fixture->issuer,
-        'road.auth_server.audience'      => $this->fixture->audience,
-        'road.auth_server.client_id'     => 'test-client',
+        'road.auth_server.issuer_url' => $this->fixture->issuer,
+        'road.auth_server.audience' => $this->fixture->audience,
+        'road.auth_server.client_id' => 'test-client',
         'road.auth_server.client_secret' => 'test-secret',
-        'road.auth_server.redirect_uri'  => 'https://app.test/auth/road/callback',
+        'road.auth_server.redirect_uri' => 'https://app.test/auth/road/callback',
     ]);
 });
 
 it('redirects to the Auth Server authorize endpoint with PKCE params', function () {
-    $this->fixture->fakeHttp(tokenResponse: []);
+    $this->fixture->fakeHttp();
 
     $response = $this->get('/auth/road/login');
 
@@ -35,35 +35,30 @@ it('redirects to the Auth Server authorize endpoint with PKCE params', function 
 });
 
 it('completes the callback and lets a road-protected route resolve Road::user()', function () {
-    $idToken = $this->fixture->issueIdToken([
-        'sub'   => 'u_owner',
-        'email' => 'eduardo@b1.app',
-        'name'  => 'Eduardo',
-    ]);
-
-    // We don't know the nonce yet — it's generated inside redirectToLogin().
-    // Drive the login first to populate the session, then read it.
-    $this->fixture->fakeHttp(tokenResponse: []);
+    // Fake the Auth Server once. We don't know the nonce yet — it's
+    // generated inside redirectToLogin() — so drive /login first to
+    // populate the session, read the nonce, then set the token payload
+    // on the fixture (a single fake; no merge-shadowing).
+    $this->fixture->fakeHttp();
     $this->get('/auth/road/login');
 
     $pkce = session()->get('road.oidc.pkce');
     expect($pkce)->toBeArray();
 
-    // Re-issue the ID token with the right nonce.
     $idToken = $this->fixture->issueIdToken([
-        'sub'   => 'u_owner',
+        'sub' => 'u_owner',
         'email' => 'eduardo@b1.app',
-        'name'  => 'Eduardo',
+        'name' => 'Eduardo',
         'nonce' => $pkce['nonce'],
     ]);
 
-    $this->fixture->fakeHttp(tokenResponse: [
-        'access_token'  => 'fake-at',
-        'id_token'      => $idToken,
+    $this->fixture->tokenResponse = [
+        'access_token' => 'fake-at',
+        'id_token' => $idToken,
         'refresh_token' => 'fake-rt',
-        'expires_in'    => 3600,
-        'token_type'    => 'Bearer',
-    ]);
+        'expires_in' => 3600,
+        'token_type' => 'Bearer',
+    ];
 
     $callback = $this->get('/auth/road/callback?code=fake-code&state='.$pkce['state']);
     $callback->assertRedirect('/');
@@ -108,14 +103,10 @@ it('redirects html visitors to the login URL with intended preserved', function 
 });
 
 it('redirects an HTML callback whose state does not match back to login with error', function () {
-    $this->fixture->fakeHttp(tokenResponse: []);
+    // State mismatch is rejected before any token exchange, so the token
+    // payload is irrelevant — a single fake to satisfy discovery is enough.
+    $this->fixture->fakeHttp();
     $this->get('/auth/road/login');
-
-    $this->fixture->fakeHttp(tokenResponse: [
-        'access_token' => 'x',
-        'id_token'     => $this->fixture->issueIdToken(),
-        'expires_in'   => 60,
-    ]);
 
     $response = $this->get('/auth/road/callback?code=fake&state=not-the-real-state');
     $response->assertStatus(302);
@@ -126,14 +117,8 @@ it('redirects an HTML callback whose state does not match back to login with err
 });
 
 it('returns json on a state-mismatched callback when the caller wants json', function () {
-    $this->fixture->fakeHttp(tokenResponse: []);
+    $this->fixture->fakeHttp();
     $this->get('/auth/road/login');
-
-    $this->fixture->fakeHttp(tokenResponse: [
-        'access_token' => 'x',
-        'id_token'     => $this->fixture->issueIdToken(),
-        'expires_in'   => 60,
-    ]);
 
     $this->getJson('/auth/road/callback?code=fake&state=not-the-real-state')
         ->assertStatus(401)

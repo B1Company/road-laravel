@@ -21,6 +21,7 @@ use B1Road\Laravel\Console\InstallCommand;
 use B1Road\Laravel\Console\WhoamiCommand;
 use B1Road\Laravel\Context\ContextResolver;
 use B1Road\Laravel\Context\RoadContext;
+use B1Road\Laravel\Exceptions\RoadException;
 use B1Road\Laravel\Http\Middleware\EnsureRoadAuthenticated;
 use B1Road\Laravel\Http\Middleware\EnsureRoadAuthenticatedOptional;
 use B1Road\Laravel\Http\Middleware\HandleRoadExceptions;
@@ -31,11 +32,16 @@ use B1Road\Laravel\Testing\FakeRoadClientFactory;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Contracts\Session\Session;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
+use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\Response;
 
 final class RoadServiceProvider extends ServiceProvider
 {
@@ -44,7 +50,7 @@ final class RoadServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/road.php', 'road');
 
         // Request-scoped — recreated on every request (Octane/FrankenPHP safe).
-        $this->app->scoped(RoadContext::class, fn () => new RoadContext());
+        $this->app->scoped(RoadContext::class, fn () => new RoadContext);
 
         $this->app->scoped(ContextResolver::class, function (Application $app): ContextResolver {
             return new ContextResolver(
@@ -127,6 +133,7 @@ final class RoadServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerMiddlewareAliases();
+        $this->registerExceptionRendering();
         $this->registerAuthGuard();
         $this->loadRoutesFrom(__DIR__.'/../routes/auth.php');
 
@@ -146,8 +153,7 @@ final class RoadServiceProvider extends ServiceProvider
             ], 'road-config');
 
             $this->publishes([
-                __DIR__.'/../resources/js/road-inertia-provider.tsx'
-                    => resource_path('js/lib/road-inertia-provider.tsx'),
+                __DIR__.'/../resources/js/road-inertia-provider.tsx' => resource_path('js/lib/road-inertia-provider.tsx'),
             ], 'road-inertia');
 
             $this->commands([
@@ -167,6 +173,31 @@ final class RoadServiceProvider extends ServiceProvider
         $router->aliasMiddleware('road.optional', EnsureRoadAuthenticatedOptional::class);
         $router->aliasMiddleware('road.errors', HandleRoadExceptions::class);
         $router->aliasMiddleware('road.inertia', ShareRoadContext::class);
+    }
+
+    /**
+     * Register the RoadException → response mapping on the framework
+     * exception handler. This — not the `road.errors` middleware — is
+     * what actually converts a RoadException into a 401 JSON body or a
+     * login redirect, because Laravel's routing pipeline renders
+     * downstream exceptions via the handler before they can reach an
+     * earlier middleware's catch (see HandleRoadExceptions docblock).
+     *
+     * No-ops on exception handlers that don't support `renderable`
+     * (custom handlers in unusual host apps); the middleware then
+     * remains the fallback for in-pipeline throws.
+     */
+    private function registerExceptionRendering(): void
+    {
+        $handler = $this->app->make(ExceptionHandler::class);
+        if (! method_exists($handler, 'renderable')) {
+            return;
+        }
+
+        $app = $this->app;
+        $handler->renderable(static function (RoadException $e, Request $request) use ($app): Response {
+            return $app->make(HandleRoadExceptions::class)->render($request, $e);
+        });
     }
 
     private function registerAuthGuard(): void
@@ -199,7 +230,7 @@ final class RoadServiceProvider extends ServiceProvider
     private function shouldAutoMountInertia(ConfigRepository $config): bool
     {
         return (bool) $config->get('road.inertia.enabled', true)
-            && class_exists(\Inertia\Inertia::class);
+            && class_exists(Inertia::class);
     }
 
     /**
@@ -214,7 +245,7 @@ final class RoadServiceProvider extends ServiceProvider
      */
     private function autoMountInertiaSharedProps(): void
     {
-        $kernel = $this->app->make(\Illuminate\Contracts\Http\Kernel::class);
+        $kernel = $this->app->make(Kernel::class);
         if (! method_exists($kernel, 'appendMiddlewareToGroup')) {
             return;
         }

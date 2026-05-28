@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Converts thrown RoadException subclasses into the right response
+ * Renders thrown RoadException subclasses into the right response
  * shape for the caller:
  *
  *   - API caller (Accept: application/json, XHR, /road-api/*):
@@ -25,13 +25,24 @@ use Symfony\Component\HttpFoundation\Response;
  *     redirect back to "/" with a flash message under
  *     `errors.road`.
  *
- * Non-Road exceptions pass through unchanged.
+ * **Wiring.** The real mechanism is an exception-handler `renderable`
+ * callback registered in RoadServiceProvider::boot() that delegates to
+ * {@see render()}. This is deliberate: Laravel's routing pipeline wraps
+ * each pipe and the route destination in its own try/catch and renders
+ * any thrown exception via the exception handler *before* it can bubble
+ * back up to an earlier middleware's try/catch — so a route/group
+ * middleware can never catch a downstream controller exception. The
+ * exception handler is the only layer that sees them.
+ *
+ * The class is still registered as the `road.errors` middleware alias
+ * for API-surface stability and to catch the rare exception thrown by a
+ * *sibling* middleware earlier in the same group; both paths funnel
+ * through {@see render()} so behavior is identical either way. Non-Road
+ * exceptions pass through unchanged.
  */
 final class HandleRoadExceptions
 {
-    public function __construct(private readonly RoadContext $context)
-    {
-    }
+    public function __construct(private readonly RoadContext $context) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -41,10 +52,19 @@ final class HandleRoadExceptions
 
             return $response;
         } catch (RoadException $e) {
-            return $this->wantsJson($request)
-                ? $this->jsonResponse($e)
-                : $this->htmlRedirect($request, $e);
+            return $this->render($request, $e);
         }
+    }
+
+    /**
+     * Map a RoadException to its caller-appropriate response. Invoked by
+     * both the middleware and the exception-handler renderable.
+     */
+    public function render(Request $request, RoadException $e): Response
+    {
+        return $this->wantsJson($request)
+            ? $this->jsonResponse($e)
+            : $this->htmlRedirect($request, $e);
     }
 
     private function jsonResponse(RoadException $e): JsonResponse
@@ -62,15 +82,15 @@ final class HandleRoadExceptions
         if ($e->httpStatus() === 401) {
             $loginUrl = url('/auth/road/login').'?'.http_build_query([
                 'intended' => $request->fullUrl(),
-                'error'    => $e->errorCode(),
+                'error' => $e->errorCode(),
             ]);
 
             return new RedirectResponse($loginUrl);
         }
 
         $request->session()->flash('errors.road', [
-            'code'      => $e->errorCode(),
-            'message'   => $e->getMessage(),
+            'code' => $e->errorCode(),
+            'message' => $e->getMessage(),
             'requestId' => $this->context->requestId(),
         ]);
 

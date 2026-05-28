@@ -20,12 +20,13 @@
         "symfony/uid": "^7.0"
     },
     "require-dev": {
+        "inertiajs/inertia-laravel": "^2.0",
+        "larastan/larastan": "^2.9",
+        "laravel/pint": "^1.17",
         "orchestra/testbench": "^9.0",
         "pestphp/pest": "^3.0",
         "pestphp/pest-plugin-laravel": "^3.0",
-        "phpstan/phpstan": "^1.11",
-        "larastan/larastan": "^2.9",
-        "laravel/pint": "^1.17"
+        "phpstan/phpstan": "^1.11"
     },
     "autoload": {
         "psr-4": {

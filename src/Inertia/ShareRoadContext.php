@@ -8,6 +8,7 @@ use B1Road\Laravel\Context\RoadContext;
 use Closure;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -39,13 +40,12 @@ final class ShareRoadContext
     public function __construct(
         private readonly RoadContext $context,
         private readonly ConfigRepository $config,
-    ) {
-    }
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
-        if ($this->config->get('road.inertia.enabled', true) && class_exists(\Inertia\Inertia::class)) {
-            \Inertia\Inertia::share('road', fn () => $this->props($request));
+        if ($this->config->get('road.inertia.enabled', true) && class_exists(Inertia::class)) {
+            Inertia::share('road', fn () => $this->props($request));
         }
 
         /** @var Response $response */
@@ -61,11 +61,11 @@ final class ShareRoadContext
         $proxyPrefix = (string) $this->config->get('road.proxy.prefix', 'road-api');
 
         return [
-            'apiBaseUrl'            => '/'.ltrim($proxyPrefix, '/'),
-            'user'                  => $user?->toArray(),
+            'apiBaseUrl' => '/'.ltrim($proxyPrefix, '/'),
+            'user' => $user?->toArray(),
             'currentBusinessUnitId' => $request->session()->get('road.current_business_unit_id'),
-            'loginUrl'              => '/auth/road/login',
-            'logoutUrl'             => '/auth/road/logout',
+            'loginUrl' => '/auth/road/login',
+            'logoutUrl' => '/auth/road/logout',
         ];
     }
 }
