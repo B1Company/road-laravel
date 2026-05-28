@@ -8,9 +8,9 @@ namespace B1Road\Laravel\Testing;
  * Fluent test-fixture builder. Mirrors `apps/sdks/road-nestjs/src/testing/scenario.ts`
  * — same shape so tests can be ported between SDKs by transliteration.
  *
- * MVP surface: `withUser`, `withBusinessUnit`, `withMember`. Role,
- * invitation, and authorize fixtures arrive with the full client
- * surface follow-up.
+ * MVP surface: `withUser`, `withBusinessUnit`, `withMember`, `withRole`.
+ * Invitations and full authorize-result customisation arrive with the
+ * full client surface follow-up.
  */
 final class RoadScenario
 {
@@ -23,9 +23,16 @@ final class RoadScenario
     /** @var array<string, array{userId:string, memberships:list<array{businessUnit:array{id:string,name:string,slug:string}, status:string, joinedAt:string, roles:list<array{id:string,name:string}>}>}> */
     public array $userBusinessUnits = [];
 
+    /**
+     * Role definitions: `$rolesByBu[$buId][$roleName] = ['read:Member', 'manage:Role']`.
+     *
+     * @var array<string, array<string, list<string>>>
+     */
+    public array $rolesByBu = [];
+
     public static function make(): self
     {
-        return new self;
+        return new self();
     }
 
     public function withUser(
@@ -35,13 +42,12 @@ final class RoadScenario
         ?string $avatarUrl = null,
     ): self {
         $this->users[$id] = array_filter([
-            'id' => $id,
-            'name' => $name ?? $id,
-            'email' => $email ?? $id.'@test.local',
+            'id'        => $id,
+            'name'      => $name ?? $id,
+            'email'     => $email ?? $id.'@test.local',
             'avatarUrl' => $avatarUrl,
         ], fn ($v) => $v !== null);
 
-        // Initialize empty memberships container.
         $this->userBusinessUnits[$id] ??= ['userId' => $id, 'memberships' => []];
 
         return $this;
@@ -54,16 +60,37 @@ final class RoadScenario
         ?string $iamScopeId = null,
     ): self {
         $this->businessUnits[$id] = [
-            'id' => $id,
-            'name' => $name ?? $id,
-            'slug' => $slug ?? str_replace('_', '-', $id),
-            'status' => 'active',
+            'id'          => $id,
+            'name'        => $name ?? $id,
+            'slug'        => $slug ?? str_replace('_', '-', $id),
+            'status'      => 'active',
             'memberCount' => 0,
             'memberLimit' => null,
-            'joinCode' => null,
-            'createdAt' => '2024-01-01T00:00:00Z',
-            'iamScopeId' => $iamScopeId ?? 'scope_'.$id,
+            'joinCode'    => null,
+            'createdAt'   => '2024-01-01T00:00:00Z',
+            'iamScopeId'  => $iamScopeId ?? 'scope_'.$id,
         ];
+
+        $this->rolesByBu[$id] ??= [];
+
+        return $this;
+    }
+
+    /**
+     * Declare a role with its permission strings (e.g. `'read:Member'`,
+     * `'manage:Role'`, `'*'`). Permissions are stored as-is.
+     *
+     * @param  list<string>  $permissions
+     */
+    public function withRole(string $buId, string $name, array $permissions = []): self
+    {
+        if (! isset($this->businessUnits[$buId])) {
+            throw new \InvalidArgumentException(
+                "Business unit $buId not declared. Call withBusinessUnit() first."
+            );
+        }
+
+        $this->rolesByBu[$buId][$name] = $permissions;
 
         return $this;
     }
@@ -74,19 +101,23 @@ final class RoadScenario
     public function withMember(string $buId, string $userId, array $roles = []): self
     {
         if (! isset($this->businessUnits[$buId])) {
-            throw new \InvalidArgumentException("Business unit $buId not declared. Call withBusinessUnit() first.");
+            throw new \InvalidArgumentException(
+                "Business unit $buId not declared. Call withBusinessUnit() first."
+            );
         }
         if (! isset($this->users[$userId])) {
-            throw new \InvalidArgumentException("User $userId not declared. Call withUser() first.");
+            throw new \InvalidArgumentException(
+                "User $userId not declared. Call withUser() first."
+            );
         }
 
         $bu = $this->businessUnits[$buId];
         $this->userBusinessUnits[$userId] ??= ['userId' => $userId, 'memberships' => []];
         $this->userBusinessUnits[$userId]['memberships'][] = [
             'businessUnit' => ['id' => $bu['id'], 'name' => $bu['name'], 'slug' => $bu['slug']],
-            'status' => 'active',
-            'joinedAt' => '2024-01-01T00:00:00Z',
-            'roles' => array_map(
+            'status'       => 'active',
+            'joinedAt'     => '2024-01-01T00:00:00Z',
+            'roles'        => array_map(
                 fn (string $r): array => ['id' => 'r_'.$r, 'name' => $r],
                 $roles,
             ),
@@ -127,5 +158,33 @@ final class RoadScenario
     public function memberships(string $userId): array
     {
         return $this->userBusinessUnits[$userId] ?? ['userId' => $userId, 'memberships' => []];
+    }
+
+    /**
+     * Effective permissions a user has on a BU — the union across all
+     * their role memberships, with the `*` wildcard short-circuited.
+     *
+     * @return list<string>
+     */
+    public function effectivePermissions(string $userId, string $buId): array
+    {
+        $memberships = $this->memberships($userId)['memberships'] ?? [];
+        $rolesOnBu = [];
+        foreach ($memberships as $m) {
+            if (($m['businessUnit']['id'] ?? null) === $buId) {
+                foreach ($m['roles'] ?? [] as $roleRef) {
+                    $rolesOnBu[] = (string) ($roleRef['name'] ?? '');
+                }
+            }
+        }
+
+        $perms = [];
+        foreach ($rolesOnBu as $roleName) {
+            foreach ($this->rolesByBu[$buId][$roleName] ?? [] as $p) {
+                $perms[$p] = true;
+            }
+        }
+
+        return array_keys($perms);
     }
 }
