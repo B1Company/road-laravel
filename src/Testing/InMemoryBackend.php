@@ -26,9 +26,10 @@ final class InMemoryBackend
     /**
      * @param  array<string,mixed>|null  $body
      * @param  string|null  $userId  Hint of which user is calling.
+     * @param  array<string,scalar|null>|null  $query
      * @return array{status:int, body:array<string,mixed>}
      */
-    public function handle(string $method, string $path, ?array $body = null, ?string $userId = null): array
+    public function handle(string $method, string $path, ?array $body = null, ?string $userId = null, ?array $query = null): array
     {
         $this->calls[] = ['method' => $method, 'path' => $path, 'body' => $body];
 
@@ -55,8 +56,13 @@ final class InMemoryBackend
             ]];
         }
 
-        if ($method === 'GET' && $path === '/me/permissions') {
-            return ['status' => 200, 'body' => ['data' => ['byBusinessUnit' => []]]];
+        // Effective permissions — scope-parameterized, returning (action,
+        // subject) TUPLES keyed by scope id. Mirrors the real
+        // `GET /iam/authorization/me/permissions?scopes=<csv>`. Only answers
+        // for the requested scopes, so a test catches an SDK that sends a
+        // missing/wrong scopes list instead of silently passing.
+        if ($method === 'GET' && $path === '/iam/authorization/me/permissions') {
+            return $this->handleMyPermissions($query ?? [], $userId);
         }
 
         if ($method === 'GET' && preg_match('#^/organization/business-units/([^/]+)$#', $path, $m) === 1) {
@@ -88,7 +94,6 @@ final class InMemoryBackend
         $subjectId = (string) ($body['subjectId'] ?? '');
         $scopeId = (string) ($body['scopeId'] ?? '');
         $required = (string) ($body['permission'] ?? '');
-        $debug = (bool) ($body['debug'] ?? false);
 
         $verdict = $this->verdict($subjectId, $scopeId, $required);
         $bu = $this->resolveBuFromScope($scopeId);
@@ -100,33 +105,14 @@ final class InMemoryBackend
             ? sprintf('granted: %s held by roles [%s]', $required, implode(', ', $rolesOnBu))
             : sprintf('no role grants %s', $required);
 
-        $data = [
+        // The real /authorize endpoint returns only { allowed, reason } — the
+        // engine exposes neither evaluatedScopes nor a role-attributed
+        // decision (NFR-14). The SDK builds its DecisionTrace from the
+        // caller's effective permissions (/me/permissions), not from here.
+        return ['status' => 200, 'body' => ['data' => [
             'allowed' => $verdict,
             'reason' => $reason,
-            'evaluatedScopes' => $scopeId !== '' ? [$scopeId] : [],
-        ];
-
-        if ($debug) {
-            $data['decision'] = [
-                'subject' => 'user:'.$subjectId,
-                'scope' => $scopeId,
-                'required' => [$required],
-                'grants' => array_map(
-                    fn (string $role) => [
-                        'via' => "role:$role",
-                        'permissions' => $this->scenario->rolesByBu[$bu['id'] ?? ''][$role] ?? [],
-                    ],
-                    $rolesOnBu,
-                ),
-                'verdict' => $verdict ? 'allow' : 'deny',
-                'reason' => $reason,
-                'evaluatedScopes' => $scopeId !== '' ? [$scopeId] : [],
-            ];
-        }
-
-        // The real /authorize endpoint always 200s with { allowed: bool }
-        // — `Road::assert()` is what turns a deny into a RoadAuthzException.
-        return ['status' => 200, 'body' => ['data' => $data]];
+        ]]];
     }
 
     /**
@@ -152,6 +138,70 @@ final class InMemoryBackend
         }
 
         return ['status' => 200, 'body' => ['data' => ['results' => $results]]];
+    }
+
+    /**
+     * Scope-keyed effective-permissions handler. Honors the `scopes` CSV —
+     * only answers for the requested scope ids — and returns `(action,
+     * subject)` tuples per scope, the shape the real
+     * `GET /iam/authorization/me/permissions` emits. Permissions are
+     * returned as declared (manage→CRUD expansion is the API's job and is
+     * exercised API-side, not here).
+     *
+     * @param  array<string,scalar|null>  $query
+     * @return array{status:int, body:array<string,mixed>}
+     */
+    private function handleMyPermissions(array $query, ?string $userId): array
+    {
+        // Single-scope mode (`?scope=`) → { data: { permissions: [tuples] } }.
+        $single = isset($query['scope']) ? trim((string) $query['scope']) : '';
+        if ($single !== '') {
+            return ['status' => 200, 'body' => ['data' => [
+                'permissions' => $this->tuplesForScope($single, $userId),
+            ]]];
+        }
+
+        // Bulk mode (`?scopes=<csv>`) → { data: { <scopeId>: [tuples] } },
+        // answering only for the requested scopes.
+        $requested = array_values(array_filter(
+            array_map('trim', explode(',', (string) ($query['scopes'] ?? ''))),
+            static fn (string $s): bool => $s !== '',
+        ));
+
+        /** @var array<string, list<array{action:string, subject:string}>> $byScope */
+        $byScope = [];
+        foreach ($requested as $scopeId) {
+            $byScope[$scopeId] = $this->tuplesForScope($scopeId, $userId);
+        }
+
+        return ['status' => 200, 'body' => ['data' => $byScope]];
+    }
+
+    /**
+     * Effective `(action, subject)` tuples for a user on a scope id, as
+     * declared in the scenario (manage→CRUD expansion is the API's job and
+     * is exercised API-side, not here).
+     *
+     * @return list<array{action:string, subject:string}>
+     */
+    private function tuplesForScope(string $scopeId, ?string $userId): array
+    {
+        $bu = $this->resolveBuFromScope($scopeId);
+        if ($bu === null || $userId === null) {
+            return [];
+        }
+
+        return array_map(
+            static function (string $p): array {
+                if ($p === '*') {
+                    return ['action' => '*', 'subject' => '*'];
+                }
+                $parts = explode(':', $p, 2);
+
+                return ['action' => $parts[0] ?? '', 'subject' => $parts[1] ?? ''];
+            },
+            $this->scenario->effectivePermissions($userId, (string) $bu['id']),
+        );
     }
 
     private function verdict(string $subjectId, string $scopeId, string $required): bool
@@ -180,10 +230,11 @@ final class InMemoryBackend
     }
 
     /**
-     * Scenarios identify BUs by their human id (`bu_1`), but the real
-     * `/authorize` engine takes the IAM scope id (`scope_bu_1`). Accept
-     * either — when an integrator uses the BU id directly as scopeId,
-     * resolve it; otherwise look up by iamScopeId.
+     * The real `/authorize` engine is keyed by the IAM **scope id**
+     * (`scope_bu_1`), not the BU id. Match ONLY by `iamScopeId` so a test
+     * catches an SDK that forgets to resolve `buId -> iamScopeId` before
+     * authorizing (passing the BU id straight through denies everything in
+     * production).
      *
      * @return array<string,mixed>|null
      */
@@ -191,11 +242,6 @@ final class InMemoryBackend
     {
         if ($scopeId === '') {
             return null;
-        }
-
-        $direct = $this->scenario->findBusinessUnit($scopeId);
-        if ($direct !== null) {
-            return $direct;
         }
 
         foreach ($this->scenario->businessUnits as $bu) {

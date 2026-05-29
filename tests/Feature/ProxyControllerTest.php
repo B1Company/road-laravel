@@ -28,7 +28,7 @@ it('forwards an allow-listed path with the session Bearer attached', function ()
     seedSessionTokens();
 
     Http::fake([
-        'api.road.test/organization/business-units/bu_1' => Http::response(
+        'api.road.test/api/alpha/organization/business-units/bu_1' => Http::response(
             ['data' => ['id' => 'bu_1', 'name' => 'B1']],
             200,
         ),
@@ -40,7 +40,7 @@ it('forwards an allow-listed path with the session Bearer attached', function ()
 
     Http::assertSent(function (HttpRequest $req) {
         return $req->hasHeader('Authorization', 'Bearer sess-bearer-123')
-            && str_starts_with($req->url(), 'https://api.road.test/organization/business-units/bu_1');
+            && str_starts_with($req->url(), 'https://api.road.test/api/alpha/organization/business-units/bu_1');
     });
 });
 
@@ -73,7 +73,7 @@ it('forwards POST bodies and content types intact', function () {
     seedSessionTokens();
 
     Http::fake([
-        'api.road.test/organization/business-units' => Http::response(
+        'api.road.test/api/alpha/organization/business-units' => Http::response(
             ['data' => ['id' => 'bu_new']],
             201,
         ),
@@ -99,7 +99,7 @@ it('passes upstream non-2xx status through unchanged', function () {
     seedSessionTokens();
 
     Http::fake([
-        'api.road.test/iam/identity/me' => Http::response(
+        'api.road.test/api/alpha/iam/identity/me' => Http::response(
             ['error' => ['code' => 'not_found', 'message' => 'gone']],
             404,
         ),

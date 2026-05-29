@@ -63,10 +63,15 @@ final class CanBatch
 
         $permissions = array_map(fn (Can $c) => $c->permissionString(), $this->checks);
 
+        // Resolve the BU id to its IAM scope id — the engine is scope-keyed,
+        // and passing the BU id straight through denies everything against the
+        // real API (mirrors Can + @b1-road/nestjs/react).
+        $scopeId = $this->resolveScopeId($this->scopeId);
+
         $body = $this->http->request('POST', '/iam/authorization/authorize/batch', [
             'subjectType' => 'user',
             'subjectId' => $user->id,
-            'scopeId' => $this->scopeId,
+            'scopeId' => $scopeId,
             'permissions' => array_values($permissions),
         ]);
 
@@ -91,5 +96,17 @@ final class CanBatch
             fn (string $p) => $byPermission[$p] ?? false,
             $permissions,
         ));
+    }
+
+    /**
+     * Resolve a BU id to its IAM scope id via the BU detail. Returns the
+     * input unchanged if the detail carries no `iamScopeId`.
+     */
+    private function resolveScopeId(string $buId): string
+    {
+        $detail = $this->http->request('GET', '/organization/business-units/'.rawurlencode($buId));
+        $data = is_array($detail['data'] ?? null) ? $detail['data'] : $detail;
+
+        return (string) ($data['iamScopeId'] ?? $buId);
     }
 }

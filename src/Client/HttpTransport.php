@@ -98,7 +98,13 @@ final class HttpTransport implements HttpTransportInterface
             throw new \RuntimeException('road.api.base_url is not configured.');
         }
 
-        return rtrim($base, '/').'/'.ltrim($path, '/');
+        // The Road API mounts every route under `/api/{version}` (the API's
+        // `app.setGlobalPrefix('api/${apiVersion}')`). `road.api.base_url` is
+        // the bare host, so the SDK composes the version prefix here — matching
+        // @b1-road/nestjs and @b1-road/react. Omitting it 404s every call.
+        $version = trim((string) $this->config->get('road.api.version', 'alpha'), '/');
+
+        return rtrim($base, '/').'/api/'.$version.'/'.ltrim($path, '/');
     }
 
     /** @return array<string,mixed>|null */

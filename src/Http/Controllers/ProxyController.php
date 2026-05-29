@@ -106,7 +106,12 @@ final class ProxyController extends Controller
     private function buildUpstreamUrl(string $path, Request $request): string
     {
         $base = rtrim((string) $this->config->get('road.api.base_url', ''), '/');
-        $url = $base.'/'.ltrim($path, '/');
+        // The allowlist is version-less (`organization/*`, `iam/*`) and the
+        // browser SDKs send version-less paths, so compose the API's
+        // `/api/{version}` prefix here — the same prefix the server-side
+        // HttpTransport adds. Without it the upstream call 404s.
+        $version = trim((string) $this->config->get('road.api.version', 'alpha'), '/');
+        $url = $base.'/api/'.$version.'/'.ltrim($path, '/');
 
         $query = $request->getQueryString();
         if (is_string($query) && $query !== '') {

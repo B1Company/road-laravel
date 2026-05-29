@@ -70,7 +70,7 @@ it('exposes BFF proxy at /road-api/* with the session Bearer attached', function
     $this->actingAsRoadUser('u_proxy', 'p@b1.app', 'Proxy User');
 
     Http::fake([
-        'api.road.test/organization/business-units/bu_proxy' => Http::response(
+        'api.road.test/api/alpha/organization/business-units/bu_proxy' => Http::response(
             ['data' => ['id' => 'bu_proxy', 'name' => 'PB1']],
             200,
         ),

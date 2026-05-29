@@ -17,6 +17,12 @@ use B1Road\Laravel\DTO\MyPermissions;
  */
 final class Me
 {
+    /**
+     * Max scope ids per `/iam/authorization/me/permissions?scopes=` request.
+     * Mirrors the API's `MAX_BULK_SCOPES` cap (it 400s above this).
+     */
+    private const MAX_BULK_SCOPES = 50;
+
     public function __construct(private readonly HttpTransportInterface $http) {}
 
     public function get(): CurrentUser
@@ -40,14 +46,74 @@ final class Me
 
     public function permissions(): MyPermissions
     {
-        $body = $this->http->request('GET', '/me/permissions');
-        $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
+        // Road exposes effective permissions per IAM **scope** (not per BU)
+        // and returns `(action, subject)` tuples — there is no `/me/permissions`
+        // route. Mirror @b1-road/nestjs + @b1-road/react: resolve each
+        // membership's BU to its `iamScopeId`, bulk-fetch the scope-keyed
+        // endpoint (chunked to the API's cap), then flatten the tuples to
+        // `"action:Subject"` strings keyed back by BU id (`*:*` → `"*"`).
+        // The membership summary omits the scope id, so resolve each BU's
+        // `iamScopeId` from its detail. Iterating the DataCollection directly
+        // keeps this empty-safe — no memberships means no BU fetches and an
+        // empty result.
+        /** @var array<string,string> $scopeIdByBu */
+        $scopeIdByBu = [];
+        foreach ($this->businessUnits()->memberships as $membership) {
+            $buId = $membership->businessUnit->id;
+            $detail = $this->http->request('GET', '/organization/business-units/'.rawurlencode($buId));
+            $detailData = is_array($detail['data'] ?? null) ? $detail['data'] : $detail;
+            $scopeIdByBu[$buId] = (string) ($detailData['iamScopeId'] ?? '');
+        }
+        if ($scopeIdByBu === []) {
+            return new MyPermissions(byBusinessUnit: []);
+        }
 
-        // The wire shape is `{ businessUnits: { '<buId>': string[] } }` or
-        // similar; accept the array as-is and stash under byBusinessUnit so
-        // the typed wrapper remains stable across response-shape evolutions.
-        $byBu = $data['byBusinessUnit'] ?? $data['businessUnits'] ?? $data;
+        // One bulk call per chunk of <= MAX_BULK_SCOPES scope ids (the API
+        // 400s above the cap). Response: `{ '<scopeId>': [{action,subject}] }`.
+        $uniqueScopeIds = array_values(array_unique(array_filter(array_values($scopeIdByBu))));
+        /** @var array<string, list<array<string,mixed>>> $byScope */
+        $byScope = [];
+        foreach (array_chunk($uniqueScopeIds, self::MAX_BULK_SCOPES) as $chunkScopeIds) {
+            $resp = $this->http->request('GET', '/iam/authorization/me/permissions', null, [
+                'scopes' => implode(',', $chunkScopeIds),
+            ]);
+            $respData = is_array($resp['data'] ?? null) ? $resp['data'] : $resp;
+            foreach ($respData as $scopeId => $tuples) {
+                $byScope[(string) $scopeId] = is_array($tuples) ? $tuples : [];
+            }
+        }
 
-        return new MyPermissions(byBusinessUnit: is_array($byBu) ? $byBu : []);
+        /** @var array<string, list<string>> $byBusinessUnit */
+        $byBusinessUnit = [];
+        foreach ($scopeIdByBu as $buId => $scopeId) {
+            $byBusinessUnit[$buId] = self::tuplesToStrings($byScope[$scopeId] ?? []);
+        }
+
+        return new MyPermissions(byBusinessUnit: $byBusinessUnit);
+    }
+
+    /**
+     * Flatten the API's `(action, subject)` tuples into `"action:Subject"`
+     * strings, collapsing the `*:*` wildcard to `"*"`.
+     *
+     * @param  list<array<string,mixed>>  $tuples
+     * @return list<string>
+     */
+    private static function tuplesToStrings(array $tuples): array
+    {
+        $out = [];
+        foreach ($tuples as $tuple) {
+            if (! is_array($tuple)) {
+                continue;
+            }
+            $action = (string) ($tuple['action'] ?? '');
+            $subject = (string) ($tuple['subject'] ?? '');
+            if ($action === '') {
+                continue;
+            }
+            $out[] = ($action === '*' && $subject === '*') ? '*' : $action.':'.$subject;
+        }
+
+        return $out;
     }
 }

@@ -138,8 +138,11 @@ final class DoctorCommand extends Command
         if ($base === '') {
             return true; // already reported by config check
         }
+        // Probe the versioned API surface — routes live under `/api/{version}`,
+        // so a bare-host probe would 404 even on a healthy API.
+        $version = trim((string) $config->get('road.api.version', 'alpha'), '/');
         try {
-            $response = $http->timeout(5)->get(rtrim($base, '/').'/iam/identity/auth/config');
+            $response = $http->timeout(5)->get(rtrim($base, '/').'/api/'.$version.'/iam/identity/auth/config');
             if ($response->successful() || $response->status() === 401) {
                 $this->line('  ✓ Road API reachable ('.$response->status().')');
 

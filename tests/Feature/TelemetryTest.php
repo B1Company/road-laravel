@@ -52,7 +52,7 @@ it('surfaces the traceparent trace id on a successful onRequest event', function
     $spy = spyTelemetry();
 
     Http::fake([
-        'api.road.test/iam/identity/me' => Http::response(
+        'api.road.test/api/alpha/iam/identity/me' => Http::response(
             ['data' => ['id' => 'u_1', 'name' => 'User 1', 'email' => 'u1@example.com']],
             200,
             ['traceparent' => '00-traceme-span-01'],
@@ -71,7 +71,7 @@ it('leaves traceId null when the response carries no traceparent', function () {
     $spy = spyTelemetry();
 
     Http::fake([
-        'api.road.test/iam/identity/me' => Http::response(
+        'api.road.test/api/alpha/iam/identity/me' => Http::response(
             ['data' => ['id' => 'u_1', 'name' => 'User 1', 'email' => 'u1@example.com']],
             200,
         ),

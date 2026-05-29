@@ -36,6 +36,7 @@ final class FakeHttpTransport implements HttpTransportInterface
             path: $path,
             body: $body,
             userId: $this->context->user()?->id,
+            query: $query,
         );
 
         return $result['body'];

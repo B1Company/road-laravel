@@ -27,7 +27,7 @@ it('calls /iam/identity/me and decodes into CurrentUser', function () {
     seedAuthedContext();
 
     Http::fake([
-        'api.road.test/iam/identity/me' => Http::response([
+        'api.road.test/api/alpha/iam/identity/me' => Http::response([
             'data' => [
                 'id' => 'u_1',
                 'name' => 'User 1',
@@ -53,7 +53,7 @@ it('decodes /me/business-units into MyBusinessUnits', function () {
     seedAuthedContext();
 
     Http::fake([
-        'api.road.test/me/business-units' => Http::response([
+        'api.road.test/api/alpha/me/business-units' => Http::response([
             'data' => [
                 'memberships' => [
                     [
@@ -78,7 +78,7 @@ it('returns a BusinessUnitDetail via Road::client()->businessUnits($buId)->fetch
     seedAuthedContext();
 
     Http::fake([
-        'api.road.test/organization/business-units/bu_1' => Http::response([
+        'api.road.test/api/alpha/organization/business-units/bu_1' => Http::response([
             'data' => [
                 'id' => 'bu_1',
                 'name' => 'B1',
@@ -117,4 +117,46 @@ it('throws RoadAuthnException when called outside a road-protected context', fun
 
     expect(fn () => app(RoadClient::class)->me()->get())
         ->toThrow(RoadAuthnException::class);
+});
+
+it('permissions() resolves BU->scope, calls the scoped endpoint, and keys by BU id', function () {
+    seedAuthedContext();
+
+    Http::fake([
+        'api.road.test/api/alpha/me/business-units' => Http::response([
+            'data' => [
+                'memberships' => [
+                    ['businessUnit' => ['id' => 'bu_1', 'name' => 'B1', 'slug' => 'b1'], 'status' => 'active', 'joinedAt' => '', 'roles' => []],
+                ],
+                'pendingInvitations' => [],
+            ],
+        ], 200),
+        'api.road.test/api/alpha/organization/business-units/bu_1' => Http::response([
+            'data' => [
+                'id' => 'bu_1', 'name' => 'B1', 'slug' => 'b1', 'status' => 'active',
+                'memberCount' => 1, 'memberLimit' => null, 'joinCode' => null,
+                'createdAt' => '', 'iamScopeId' => 'scope_1',
+            ],
+        ], 200),
+        'api.road.test/api/alpha/iam/authorization/me/permissions*' => Http::response([
+            'data' => [
+                'scope_1' => [
+                    ['action' => 'manage', 'subject' => 'Project'],
+                    ['action' => '*', 'subject' => '*'],
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $perms = app(RoadClient::class)->me()->permissions();
+
+    expect($perms->byBusinessUnit)->toBe([
+        'bu_1' => ['manage:Project', '*'],
+    ]);
+
+    // Hits the scoped authorization endpoint with the resolved scope id.
+    Http::assertSent(fn (HttpRequest $req) => str_contains($req->url(), '/api/alpha/iam/authorization/me/permissions')
+        && str_contains($req->url(), 'scopes=scope_1'));
+    // The non-existent bare `/me/permissions` must never be called.
+    Http::assertNotSent(fn (HttpRequest $req) => str_contains($req->url(), 'alpha/me/permissions'));
 });

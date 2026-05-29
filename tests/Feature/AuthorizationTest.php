@@ -162,3 +162,41 @@ it('manage:Subject grants every CRUD verb on that subject', function () {
     // manage:Member does NOT spill into manage:Role
     expect(Road::can(Action::Update, Subject::Role)->in('bu_m')->check())->toBeFalse();
 });
+
+it('Road::client()->me()->permissions() maps scope tuples to strings keyed by BU id', function () {
+    Road::fake(scenarioWithReader());
+    $this->actingAsRoadUser('u_reader');
+
+    $perms = Road::client()->me()->permissions();
+
+    // Reader holds read:Member + read:Role on bu_1; keyed back by BU id.
+    expect($perms->byBusinessUnit)->toBe([
+        'bu_1' => ['read:Member', 'read:Role'],
+    ]);
+});
+
+it('Road::can()->in($buId) resolves the BU to its IAM scope before authorizing', function () {
+    $fake = Road::fake(scenarioWithReader());
+    $this->actingAsRoadUser('u_reader');
+
+    // The fake matches the authorize call ONLY by iamScopeId, so a true
+    // verdict proves the SDK resolved bu_1 -> its scope first.
+    expect(Road::can(Action::Read, Subject::Member)->in('bu_1')->check())->toBeTrue();
+
+    $fake->assertCalled('GET', '/organization/business-units/bu_1');
+    $fake->assertCalled('POST', '/iam/authorization/authorize');
+});
+
+it('Road::can()->trace() sources grants from the caller effective permissions', function () {
+    Road::fake(scenarioWithReader());
+    $this->actingAsRoadUser('u_reader');
+
+    $trace = Road::can(Action::Read, Subject::Member)->in('bu_1')->trace();
+
+    // No role attribution (NFR-14): a single 'effective' grant carrying the
+    // caller's actual permissions on the scope.
+    expect($trace->grants)->toHaveCount(1);
+    expect($trace->grants[0]['via'])->toBe('effective');
+    expect($trace->grants[0]['permissions'])->toContain('read:Member');
+    expect($trace->grants[0]['permissions'])->toContain('read:Role');
+});
