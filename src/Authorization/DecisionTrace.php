@@ -26,8 +26,7 @@ final readonly class DecisionTrace
         public string $verdict,
         public string $reason,
         public ?array $evaluatedScopes = null,
-    ) {
-    }
+    ) {}
 
     /** @param  array<string,mixed>  $data */
     public static function fromArray(array $data): self
@@ -45,7 +44,7 @@ final readonly class DecisionTrace
                 }
             }
             $grants[] = [
-                'via'         => (string) ($entry['via'] ?? ''),
+                'via' => (string) ($entry['via'] ?? ''),
                 'permissions' => $perms,
             ];
         }
@@ -108,12 +107,12 @@ final readonly class DecisionTrace
     public function toArray(): array
     {
         $data = [
-            'subject'  => $this->subject,
-            'scope'    => $this->scope,
+            'subject' => $this->subject,
+            'scope' => $this->scope,
             'required' => $this->required,
-            'grants'   => $this->grants,
-            'verdict'  => $this->verdict,
-            'reason'   => $this->reason,
+            'grants' => $this->grants,
+            'verdict' => $this->verdict,
+            'reason' => $this->reason,
         ];
         if ($this->evaluatedScopes !== null) {
             $data['evaluatedScopes'] = $this->evaluatedScopes;

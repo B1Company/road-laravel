@@ -155,7 +155,7 @@ it('manage:Subject grants every CRUD verb on that subject', function () {
     );
     $this->actingAsRoadUser('u_mgr');
 
-    expect(Road::can(Action::Read,   Subject::Member)->in('bu_m')->check())->toBeTrue();
+    expect(Road::can(Action::Read, Subject::Member)->in('bu_m')->check())->toBeTrue();
     expect(Road::can(Action::Create, Subject::Member)->in('bu_m')->check())->toBeTrue();
     expect(Road::can(Action::Update, Subject::Member)->in('bu_m')->check())->toBeTrue();
     expect(Road::can(Action::Delete, Subject::Member)->in('bu_m')->check())->toBeTrue();

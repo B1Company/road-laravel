@@ -85,8 +85,8 @@ final class Can
         $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
 
         return AuthorizeResult::from([
-            'allowed'         => (bool) ($data['allowed'] ?? false),
-            'reason'          => (string) ($data['reason'] ?? ''),
+            'allowed' => (bool) ($data['allowed'] ?? false),
+            'reason' => (string) ($data['reason'] ?? ''),
             'evaluatedScopes' => array_values(array_filter(
                 (array) ($data['evaluatedScopes'] ?? []),
                 'is_string',
@@ -113,9 +113,9 @@ final class Can
 
         $payload = [
             'subjectType' => 'user',
-            'subjectId'   => $user->id,
-            'scopeId'     => $this->scopeId,
-            'permission'  => $this->permission,
+            'subjectId' => $user->id,
+            'scopeId' => $this->scopeId,
+            'permission' => $this->permission,
         ];
 
         if ($debug) {

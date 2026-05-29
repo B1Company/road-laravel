@@ -35,6 +35,5 @@ final readonly class RequirePermission
         public Action $action,
         public Subject $subject,
         public string $in,
-    ) {
-    }
+    ) {}
 }

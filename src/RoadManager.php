@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel;
 
+use B1Road\Laravel\Auth\RoadUser;
 use B1Road\Laravel\Authorization\Action;
 use B1Road\Laravel\Authorization\Can;
 use B1Road\Laravel\Authorization\CanBatch;
 use B1Road\Laravel\Authorization\Subject;
-use B1Road\Laravel\Auth\RoadUser;
 use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\Client\RoadClient;
 use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\Exceptions\RoadAuthzException;
+use B1Road\Laravel\Testing\FakeHttpTransport;
 use B1Road\Laravel\Testing\FakeRoadClientFactory;
 use B1Road\Laravel\Testing\InMemoryBackend;
 use B1Road\Laravel\Testing\RoadFakeAssertions;
@@ -29,8 +30,7 @@ final class RoadManager
     public function __construct(
         private readonly Container $container,
         private readonly RoadContext $context,
-    ) {
-    }
+    ) {}
 
     // -- Identity ----------------------------------------------------------
 
@@ -149,7 +149,7 @@ final class RoadManager
         /** @var FakeRoadClientFactory $factory */
         $factory = $this->container->make(FakeRoadClientFactory::class);
 
-        $fakeTransport = new \B1Road\Laravel\Testing\FakeHttpTransport($backend, $this->context);
+        $fakeTransport = new FakeHttpTransport($backend, $this->context);
         $this->container->instance(RoadClient::class, $factory->build($backend, $this->context));
         $this->container->instance(HttpTransportInterface::class, $fakeTransport);
 

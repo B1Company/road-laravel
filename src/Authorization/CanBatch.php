@@ -29,8 +29,7 @@ final class CanBatch
         private readonly HttpTransportInterface $http,
         private readonly RoadContext $context,
         private readonly array $checks,
-    ) {
-    }
+    ) {}
 
     public function in(string $scopeId): self
     {
@@ -66,8 +65,8 @@ final class CanBatch
 
         $body = $this->http->request('POST', '/iam/authorization/authorize/batch', [
             'subjectType' => 'user',
-            'subjectId'   => $user->id,
-            'scopeId'     => $this->scopeId,
+            'subjectId' => $user->id,
+            'scopeId' => $this->scopeId,
             'permissions' => array_values($permissions),
         ]);
 

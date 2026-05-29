@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel\Testing;
 
+use B1Road\Laravel\Authorization\Permission;
 use B1Road\Laravel\Exceptions\RoadNotFoundException;
 
 /**
@@ -20,9 +21,7 @@ final class InMemoryBackend
     /** @var list<array{method:string, path:string, body:?array<string,mixed>}> */
     public array $calls = [];
 
-    public function __construct(public readonly RoadScenario $scenario)
-    {
-    }
+    public function __construct(public readonly RoadScenario $scenario) {}
 
     /**
      * @param  array<string,mixed>|null  $body
@@ -50,7 +49,7 @@ final class InMemoryBackend
 
             return ['status' => 200, 'body' => [
                 'data' => [
-                    'memberships'        => $memberships,
+                    'memberships' => $memberships,
                     'pendingInvitations' => [],
                 ],
             ]];
@@ -102,25 +101,25 @@ final class InMemoryBackend
             : sprintf('no role grants %s', $required);
 
         $data = [
-            'allowed'         => $verdict,
-            'reason'          => $reason,
+            'allowed' => $verdict,
+            'reason' => $reason,
             'evaluatedScopes' => $scopeId !== '' ? [$scopeId] : [],
         ];
 
         if ($debug) {
             $data['decision'] = [
-                'subject'         => 'user:'.$subjectId,
-                'scope'           => $scopeId,
-                'required'        => [$required],
-                'grants'          => array_map(
+                'subject' => 'user:'.$subjectId,
+                'scope' => $scopeId,
+                'required' => [$required],
+                'grants' => array_map(
                     fn (string $role) => [
-                        'via'         => "role:$role",
+                        'via' => "role:$role",
                         'permissions' => $this->scenario->rolesByBu[$bu['id'] ?? ''][$role] ?? [],
                     ],
                     $rolesOnBu,
                 ),
-                'verdict'         => $verdict ? 'allow' : 'deny',
-                'reason'          => $reason,
+                'verdict' => $verdict ? 'allow' : 'deny',
+                'reason' => $reason,
                 'evaluatedScopes' => $scopeId !== '' ? [$scopeId] : [],
             ];
         }
@@ -148,7 +147,7 @@ final class InMemoryBackend
             }
             $results[] = [
                 'permission' => $perm,
-                'allowed'    => $this->verdict($subjectId, $scopeId, $perm),
+                'allowed' => $this->verdict($subjectId, $scopeId, $perm),
             ];
         }
 
@@ -164,7 +163,7 @@ final class InMemoryBackend
 
         $effective = $this->scenario->effectivePermissions($subjectId, $bu['id']);
 
-        if (in_array(\B1Road\Laravel\Authorization\Permission::WILDCARD, $effective, true)) {
+        if (in_array(Permission::WILDCARD, $effective, true)) {
             return true;
         }
 

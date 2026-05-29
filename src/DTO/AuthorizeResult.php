@@ -17,6 +17,5 @@ final class AuthorizeResult extends Data
         public bool $allowed,
         public string $reason,
         public array $evaluatedScopes,
-    ) {
-    }
+    ) {}
 }
