@@ -34,13 +34,13 @@
     },
     "require-dev": {
         "inertiajs/inertia-laravel": "^2.0",
-        "larastan/larastan": "^2.9",
+        "larastan/larastan": "^2.9|^3.0",
         "laravel/pint": "^1.17",
         "nette/php-generator": "^4.1",
-        "orchestra/testbench": "^9.0",
+        "orchestra/testbench": "^9.0|^10.0",
         "pestphp/pest": "^3.0",
         "pestphp/pest-plugin-laravel": "^3.0",
-        "phpstan/phpstan": "^1.11"
+        "phpstan/phpstan": "^1.11|^2.0"
     },
     "suggest": {
         "inertiajs/inertia-laravel": "Auto-mounts ShareRoadContext and powers the zero-JWT @b1-road/react widget integration (^2.0)."

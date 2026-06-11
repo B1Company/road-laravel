@@ -33,6 +33,10 @@ final class BusinessUnitWithIncludes extends Data
         public ?array $roles = null,
     ) {}
 
+    /**
+     * @param  list<Member>|null  $members
+     * @param  list<Role>|null  $roles
+     */
     public static function fromDetail(BusinessUnitDetail $detail, ?array $members, ?array $roles): self
     {
         return new self(

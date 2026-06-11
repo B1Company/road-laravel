@@ -12,4 +12,13 @@ parameters:
         - src
     tmpDir: .phpstan-cache
     treatPhpDocTypesAsCertain: false
-    checkMissingIterableValueType: false
+    # PHPStan 2 reports missing iterable value types by default; we annotate the
+    # value shapes we care about (DTO payloads, wire bodies) and don't require a
+    # generic type on every framework `array` param.
+    ignoreErrors:
+        - identifier: missingType.iterableValue
+        # ActsAsRoadUser is a public test helper for integrators; it reads as
+        # "unused" only because we analyse src/ (not tests/, which consume it).
+        -
+            identifier: trait.unused
+            path: src/Testing/ActsAsRoadUser.php

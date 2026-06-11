@@ -24,18 +24,18 @@ final class RoadFakeAssertions
         $method = strtoupper($method);
         $candidatePath = '/'.ltrim($path, '/');
 
+        $found = false;
         foreach ($this->backend->calls as $call) {
             if (
                 strtoupper($call['method']) === $method
                 && '/'.ltrim($call['path'], '/') === $candidatePath
             ) {
-                Assert::assertTrue(true);
-
-                return;
+                $found = true;
+                break;
             }
         }
 
-        Assert::fail(sprintf(
+        Assert::assertTrue($found, sprintf(
             'Expected fake Road client to be called with %s %s, but it was not. Recorded: %s',
             $method,
             $candidatePath,
@@ -45,13 +45,7 @@ final class RoadFakeAssertions
 
     public function assertNothingCalled(): void
     {
-        if ($this->backend->calls === []) {
-            Assert::assertTrue(true);
-
-            return;
-        }
-
-        Assert::fail(sprintf(
+        Assert::assertSame([], $this->backend->calls, sprintf(
             'Expected no fake Road calls, but %d were recorded: %s',
             count($this->backend->calls),
             json_encode($this->backend->calls) ?: '[]',

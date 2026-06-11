@@ -94,9 +94,10 @@ final class Me
 
     /**
      * Flatten the API's `(action, subject)` tuples into `"action:Subject"`
-     * strings, collapsing the `*:*` wildcard to `"*"`.
+     * strings, collapsing the `*:*` wildcard to `"*"`. Each non-array element
+     * is skipped, so the loosely-typed wire array is accepted as-is.
      *
-     * @param  list<array<string,mixed>>  $tuples
+     * @param  array<mixed>  $tuples
      * @return list<string>
      */
     private static function tuplesToStrings(array $tuples): array
