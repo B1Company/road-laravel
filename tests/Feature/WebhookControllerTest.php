@@ -5,6 +5,7 @@ declare(strict_types=1);
 use B1Road\Laravel\Http\Controllers\WebhookController;
 use B1Road\Laravel\Webhooks\Events\MemberSuspended;
 use B1Road\Laravel\Webhooks\Events\RoadWebhookReceived;
+use B1Road\Laravel\Webhooks\RoadEventMap;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 
@@ -89,6 +90,26 @@ it('returns 200 for an unknown event, firing only the generic event', function (
     Event::assertDispatched(RoadWebhookReceived::class);
     Event::assertNotDispatched(MemberSuspended::class);
 });
+
+it('dispatches the right typed event for every event in the catalog', function (string $event) {
+    Event::fake();
+
+    $data = str_contains($event, 'invitation')
+        ? ['businessUnitId' => 'bu_1', 'invitationId' => 'inv_1', 'email' => 'e@b1.app']
+        : ['businessUnitId' => 'bu_1', 'memberId' => 'm_1', 'userId' => 'u_1'];
+    if ($event === 'organization.member.role-changed') {
+        $data['roleId'] = 'r_1';
+        $data['action'] = 'assigned';
+    }
+
+    [$raw, $headers] = delivery(['id' => 'evt', 'event' => $event, 'timestamp' => '2026-06-11T00:00:00Z', 'data' => $data]);
+
+    $this->call('POST', '/road/webhooks', [], [], [], $headers, $raw)->assertOk();
+
+    [$eventClass] = RoadEventMap::for($event);
+    Event::assertDispatched($eventClass);
+    Event::assertDispatched(RoadWebhookReceived::class);
+})->with(RoadEventMap::eventTypes());
 
 it('skips verification in non-production when verify is disabled', function () {
     config(['road.webhooks.verify' => false, 'road.webhooks.secret' => null]);

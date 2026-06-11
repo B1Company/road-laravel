@@ -90,6 +90,18 @@ it('the road.permission middleware allows when the role grants the permission', 
         ->assertJsonPath('ok', true);
 });
 
+it('the road.permission middleware reads the scope from request input with input:', function () {
+    Road::fake(scenarioWithReader());
+    $this->actingAsRoadUser('u_reader');
+
+    Route::middleware(['road.errors', 'road', 'road.permission:read,Member,input:business_unit_id'])
+        ->post('/members', fn () => ['ok' => true]);
+
+    $this->postJson('/members', ['business_unit_id' => 'bu_1'])
+        ->assertOk()
+        ->assertJsonPath('ok', true);
+});
+
 it('the road.permission middleware 403s with permission_denied when the role lacks it', function () {
     Road::fake(scenarioWithReader());
     $this->actingAsRoadUser('u_guest');

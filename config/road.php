@@ -103,7 +103,10 @@ return [
     ],
 
     'debug' => [
-        'header_enabled' => (bool) env('ROAD_DEBUG_HEADER', ! app()->environment('production')),
+        // Default on outside production. Read APP_ENV directly rather than
+        // app()->environment() so this config file stays cacheable (and so a
+        // bare container — e.g. static analysis — can load it without booting).
+        'header_enabled' => (bool) env('ROAD_DEBUG_HEADER', env('APP_ENV', 'production') !== 'production'),
         'log_channel' => env('ROAD_LOG_CHANNEL', 'stack'),
     ],
 
