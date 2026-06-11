@@ -15,6 +15,8 @@ final class RoadContext
 
     private ?string $requestId = null;
 
+    private bool $serviceMode = false;
+
     public function user(): ?RoadUser
     {
         return $this->user;
@@ -48,5 +50,20 @@ final class RoadContext
     public function isAuthenticated(): bool
     {
         return $this->user !== null;
+    }
+
+    /**
+     * Service mode: the transport sources its Bearer from the service-token
+     * store rather than the per-request user token. Set on a dedicated context
+     * by `Road::asService()`, never on the live request context.
+     */
+    public function isServiceMode(): bool
+    {
+        return $this->serviceMode;
+    }
+
+    public function setServiceMode(bool $serviceMode): void
+    {
+        $this->serviceMode = $serviceMode;
     }
 }

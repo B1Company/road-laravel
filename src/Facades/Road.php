@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static Can can(Action $action, Subject $subject)
  * @method static CanBatch canMany(array $checks)
  * @method static void assert(Can $check)
+ * @method static RoadManager asService()
  * @method static RoadFakeAssertions fake(RoadScenario $scenario)
  *
  * @see RoadManager

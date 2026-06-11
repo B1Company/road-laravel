@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel\Client;
 
+use B1Road\Laravel\Auth\Service\ServiceTokenStore;
 use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\Exceptions\RoadAuthnException;
 use B1Road\Laravel\Exceptions\RoadException;
@@ -38,6 +39,7 @@ final class HttpTransport implements HttpTransportInterface
         private readonly RoadContext $context,
         private readonly ConfigRepository $config,
         private readonly RoadTelemetry $telemetry,
+        private readonly ?ServiceTokenStore $serviceTokens = null,
     ) {}
 
     /**
@@ -51,12 +53,23 @@ final class HttpTransport implements HttpTransportInterface
         ?array $body = null,
         ?array $query = null,
     ): array {
-        $token = $this->context->token();
-        if ($token === null || $token === '') {
-            throw new RoadAuthnException(
-                message: 'No access token available on RoadContext — call Road from a `road`-protected route.',
-                errorCode: 'no_token',
-            );
+        $serviceMode = $this->context->isServiceMode();
+        if ($serviceMode) {
+            if ($this->serviceTokens === null) {
+                throw new RoadAuthnException(
+                    message: 'Service mode requested but no service credentials are configured. Set ROAD_SERVICE_CLIENT_ID and a secret (or private_key_jwt config).',
+                    errorCode: 'service_credentials_missing',
+                );
+            }
+            $token = $this->serviceTokens->getToken();
+        } else {
+            $token = $this->context->token();
+            if ($token === null || $token === '') {
+                throw new RoadAuthnException(
+                    message: 'No access token available on RoadContext — call Road from a `road`-protected route.',
+                    errorCode: 'no_token',
+                );
+            }
         }
 
         $upperMethod = strtoupper($method);
@@ -83,6 +96,7 @@ final class HttpTransport implements HttpTransportInterface
         }
 
         $start = microtime(true);
+        $authRetried = false;
 
         for ($attempt = 1; ; $attempt++) {
             $pending = $this->http
@@ -127,6 +141,17 @@ final class HttpTransport implements HttpTransportInterface
                 $this->parseBody($response),
                 ['Retry-After' => $response->header('Retry-After')],
             );
+
+            // In service mode a 401 means the cached token was rejected
+            // (rotated/expired server-side). Drop it and retry once with a
+            // freshly-acquired token. Independent of the transient-retry budget.
+            if ($serviceMode && $status === 401 && ! $authRetried && $this->serviceTokens !== null) {
+                $authRetried = true;
+                $this->serviceTokens->invalidate();
+                $token = $this->serviceTokens->getToken();
+
+                continue;
+            }
 
             if ($attempt < $maxAttempts && $this->shouldRetry($error)) {
                 $this->backoff($attempt, $baseDelayMs);

@@ -75,6 +75,27 @@ return [
 
     'token_store' => env('ROAD_TOKEN_STORE', 'session'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Service-to-service mode
+    |--------------------------------------------------------------------------
+    | Credentials for `Road::asService()` — calls made from queued jobs, cron,
+    | and other contexts with no browser session. The SDK acquires a token from
+    | the Auth Server (cached until expiry) via `client_credentials` (a shared
+    | secret) or `private_key_jwt` (a signed assertion). Leave `client_id` unset
+    | to disable; `Road::asService()` then raises a clear error.
+    */
+
+    'service' => [
+        'mode' => env('ROAD_SERVICE_MODE'), // null | 'client_credentials' | 'private_key_jwt'
+        'client_id' => env('ROAD_SERVICE_CLIENT_ID'),
+        'client_secret' => env('ROAD_SERVICE_CLIENT_SECRET'),
+        'key_id' => env('ROAD_SERVICE_KEY_ID'),
+        'private_key' => env('ROAD_SERVICE_PRIVATE_KEY'), // PEM literal or a path to one
+        'algorithm' => env('ROAD_SERVICE_ALGORITHM', 'RS256'),
+        'audience' => env('ROAD_SERVICE_AUDIENCE'), // defaults to auth_server.audience
+    ],
+
     'inertia' => [
         'enabled' => (bool) env('ROAD_INERTIA_ENABLED', true),
         'share_user' => true,
