@@ -4,9 +4,11 @@ The official Road SDK for Laravel apps. **True BFF auth** against the Road
 IAM platform — the Auth Server JWT is held by your Laravel process and
 **never reaches the browser**.
 
-> Status: pre-1.0 alpha (BFF MVP). Authorization primitives, the full
-> Members/Roles/Invitations/IAM client surface, retry/idempotency, service
-> mode, and webhooks are tracked in follow-up releases.
+> Status: pre-1.0 (`0.x` alpha). While Road serves the `alpha` API contract the
+> surface may shift between minor versions; it stabilises when the API graduates
+> `alpha` → `v1`. The SDK is feature-complete: BFF auth, the full
+> Members/Roles/Invitations/IAM client with auto-pagination, authorization
+> primitives, retries/idempotency, service-to-service mode, and webhooks.
 
 ## Install
 
@@ -112,19 +114,38 @@ Browser ── session cookie ──▶ Laravel ── Bearer (Auth Server JWT) 
 
 ## Server-side client
 
-`Road::client()` mirrors `@b1-road/nestjs`'s client. The MVP surface:
+`Road::client()` mirrors `@b1-road/nestjs`'s client one-to-one.
 
 ```php
+// Me
 Road::client()->me()->get();                          // CurrentUser
 Road::client()->me()->businessUnits();                // MyBusinessUnits
 Road::client()->me()->permissions();                  // MyPermissions
+
+// Business units — get(), create(), update(), and the navigator shorthand
 Road::client()->businessUnits()->get($buId);          // BusinessUnitDetail
 Road::client()->businessUnits($buId)->fetch();        // same; navigator style
+Road::client()->businessUnits()->create(['name' => 'B1']); // slug derived
+Road::client()->businessUnits()->get($buId, include: ['members', 'roles']);
+
+// Members / Roles / Invitations hang off the BU and act on themselves
+foreach (Road::client()->businessUnits($buId)->members() as $member) { /* … */ }
+Road::client()->businessUnits($buId)->members()->suspend($memberId);
+Road::client()->businessUnits($buId)->roles()->create(['name' => 'Editor', 'permissions' => ['read:Member']]);
+Road::client()->businessUnits($buId)->invitations()->create(['email' => 'x@b1.app', 'roleId' => $roleId]);
+Road::client()->invitations()->accept($invitationId);
+
+// IAM control plane
+Road::client()->iam()->authorize([...]);
+Road::client()->iam()->scope($scopeId)->roles()->all();
+Road::client()->iam()->assignments()->create([...]);
 ```
 
-Members / Roles / Invitations / IAM control plane methods will be added
-in the next release — they are intentionally *not* stubbed so your IDE
-autocomplete never offers a method that doesn't work.
+Listings are **auto-paginating iterators** — `foreach` walks every page,
+transparently following cursors. Need one bounded page? `->firstPage(limit: 50)`.
+Prefer Laravel collection chaining? `->lazy()->filter(...)`. `include:` expands
+related resources in one call (today via client-side fan-out, collapsing to a
+single round-trip once the API ships native expand).
 
 ## Authorization
 
@@ -206,8 +227,15 @@ Every error thrown by the SDK is a `RoadException` subclass:
 | `RoadAuthnException` | 401 | `unauthenticated` (or specific OIDC code) | No session, expired session, OIDC validation failure |
 | `RoadAuthzException` | 403 | `permission_denied` | Authenticated but no grant. Carries a `DecisionTrace` rendered into the message. |
 | `RoadNotFoundException` | 404 | `not_found` | Road API said 404 |
-| `RoadNetworkException` | 502 | `network_error` | Unreachable upstream |
+| `RoadConflictException` | 409 | `conflict` | Duplicate / version skew |
+| `RoadValidationException` | 422 / 400 | `validation_error` | Carries `fieldErrors` keyed by field |
+| `RoadRateLimitException` | 429 | `rate_limited` | Carries `retryAfter` (seconds) — never auto-retried |
+| `RoadServerException` | 5xx | `server_error` | Retried with backoff (transient) |
+| `RoadNetworkException` | 502 | `network_error` | Unreachable upstream — retried with backoff |
 | `RoadApiException` | varies | varies | Catch-all for non-mapped statuses |
+
+All errors are parsed from the API's RFC 7807 Problem Details and carry a stable
+`code`, a `requestId`, and a `docs` URL.
 
 The `road.errors` middleware (auto-applied to `auth/road/*`,
 `/road/whoami`, and `/road-api/*`) renders these as:
@@ -271,6 +299,51 @@ Event shape matches `@b1-road/nestjs` and `@b1-road/react` —
 `{ method, path, status, durationMs, requestId, traceId, attempts }` — so
 one sink covers every Road SDK.
 
+## Service-to-service mode
+
+For queued jobs, scheduled commands, and anything with no browser session,
+`Road::asService()` returns a client that authenticates as the service principal
+instead of the request user:
+
+```php
+Road::asService()->client()->businessUnits($buId)->members()->all();
+```
+
+Configure credentials in `.env` — either a shared secret (`client_credentials`)
+or a signed assertion (`private_key_jwt`):
+
+```dotenv
+ROAD_SERVICE_MODE=client_credentials
+ROAD_SERVICE_CLIENT_ID=...
+ROAD_SERVICE_CLIENT_SECRET=...
+# or: ROAD_SERVICE_MODE=private_key_jwt with ROAD_SERVICE_KEY_ID + ROAD_SERVICE_PRIVATE_KEY
+```
+
+The SDK acquires a token from the Auth Server, caches it (until just before
+expiry, with a lock so concurrent workers don't stampede), and re-acquires
+transparently on a 401. `asService()` uses a dedicated context, so a request
+handler can call `Road::user()` *and* dispatch a job with `Road::asService()`
+without cross-contamination.
+
+## Webhooks
+
+Opt in with `ROAD_WEBHOOKS_ENABLED=true` and set `ROAD_WEBHOOK_SECRET`. The SDK
+mounts a single signed endpoint (default `POST /road/webhooks`, outside the
+`web` group — no CSRF) that verifies the HMAC-SHA256 signature and dispatches
+each delivery onto Laravel's event bus. Register ordinary listeners:
+
+```php
+use B1Road\Laravel\Webhooks\Events\MemberSuspended;
+
+Event::listen(MemberSuspended::class, function (MemberSuspended $event) {
+    // $event->id, $event->data->memberId, $event->data->businessUnitId
+});
+```
+
+Every delivery also fires a catch-all `RoadWebhookReceived`. The endpoint
+fails closed — `503` when no secret is configured, `401` on a bad signature —
+and returns `200` for unknown event types (forward-compatible).
+
 ## Artisan commands
 
 | Command | Purpose |
@@ -278,6 +351,7 @@ one sink covers every Road SDK.
 | `road:install` | Publish config + Inertia JS provider, append `.env` stubs |
 | `road:doctor` | Connectivity + config smoke check (env, reachability, JWKS, clock skew, redirect_uri shape, session driver, middleware, proxy mount) |
 | `road:whoami` | Print the session-stored user's claims |
+| `road:generate-dtos` | Regenerate (or `--check`) the typed DTOs from the OpenAPI contract |
 
 ## Configuration
 
@@ -293,9 +367,12 @@ The full config shape is published to `config/road.php`:
 | `road.proxy.enabled` | Auto-mount `/road-api/{any?}` (default true) |
 | `road.proxy.prefix` | Proxy URL prefix (default `road-api`) |
 | `road.proxy.allow` | Glob allowlist of paths the proxy will forward |
-| `road.token_store` | Where BFF caches Auth Server tokens (`session` only in MVP) |
+| `road.api.retry.*` | Transient-failure retries: `enabled`, `max_attempts` (3), `base_delay_ms` (250) |
+| `road.token_store` | Where the BFF caches Auth Server tokens (`session`) |
 | `road.inertia.enabled` | Inject `props.road` into Inertia shared props (default true) |
 | `road.debug.header_enabled` | Surface `DecisionTrace` on errors when `X-Road-Debug: 1` |
+| `road.service.*` | Service-to-service credentials for `Road::asService()` |
+| `road.webhooks.*` | Webhook receiver: `enabled`, `path`, `secret`, `tolerance`, `verify` |
 
 ## Naming note
 
