@@ -86,4 +86,24 @@ return [
         'log_channel' => env('ROAD_LOG_CHANNEL', 'stack'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Webhooks
+    |--------------------------------------------------------------------------
+    | Opt-in receiver for Road webhook deliveries. When enabled, a single
+    | `POST {path}` route is mounted (outside the `web` group — no CSRF). Each
+    | verified delivery is dispatched onto Laravel's event bus. Authenticity is
+    | an HMAC-SHA256 signature over `"{timestamp}.{rawBody}"`; set the endpoint
+    | secret as `ROAD_WEBHOOK_SECRET`. `verify=false` skips verification, and is
+    | honored only outside production (local development).
+    */
+
+    'webhooks' => [
+        'enabled' => (bool) env('ROAD_WEBHOOKS_ENABLED', false),
+        'path' => env('ROAD_WEBHOOK_PATH', 'road/webhooks'),
+        'secret' => env('ROAD_WEBHOOK_SECRET'),
+        'tolerance' => (int) env('ROAD_WEBHOOK_TOLERANCE', 300),
+        'verify' => (bool) env('ROAD_WEBHOOK_VERIFY', true),
+    ],
+
 ];

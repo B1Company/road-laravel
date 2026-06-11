@@ -27,10 +27,12 @@ use B1Road\Laravel\Http\Middleware\EnsureRoadAuthenticatedOptional;
 use B1Road\Laravel\Http\Middleware\HandleRoadExceptions;
 use B1Road\Laravel\Http\Middleware\RequirePermission;
 use B1Road\Laravel\Http\Middleware\ResolveAttributePermissions;
+use B1Road\Laravel\Http\Middleware\VerifyRoadWebhookSignature;
 use B1Road\Laravel\Inertia\ShareRoadContext;
 use B1Road\Laravel\Telemetry\NoopTelemetry;
 use B1Road\Laravel\Telemetry\RoadTelemetry;
 use B1Road\Laravel\Testing\FakeRoadClientFactory;
+use B1Road\Laravel\Webhooks\WebhookSignatureVerifier;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -130,6 +132,17 @@ final class RoadServiceProvider extends ServiceProvider
 
         // Test harness — the manager resolves this when Road::fake() is called.
         $this->app->singleton(FakeRoadClientFactory::class);
+
+        // Webhook signature verifier, configured from the endpoint secret —
+        // available for integrators who verify deliveries by hand.
+        $this->app->scoped(WebhookSignatureVerifier::class, function (Application $app): WebhookSignatureVerifier {
+            $config = $app->make(ConfigRepository::class);
+
+            return new WebhookSignatureVerifier(
+                (string) $config->get('road.webhooks.secret', ''),
+                (int) $config->get('road.webhooks.tolerance', 300),
+            );
+        });
     }
 
     public function boot(): void
@@ -143,6 +156,10 @@ final class RoadServiceProvider extends ServiceProvider
 
         if ($config->get('road.proxy.enabled', true)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/proxy.php');
+        }
+
+        if ($config->get('road.webhooks.enabled', false)) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/webhooks.php');
         }
 
         if ($this->shouldAutoMountInertia($config)) {
@@ -177,6 +194,7 @@ final class RoadServiceProvider extends ServiceProvider
         $router->aliasMiddleware('road.inertia', ShareRoadContext::class);
         $router->aliasMiddleware('road.permission', RequirePermission::class);
         $router->aliasMiddleware('road.permission.attribute', ResolveAttributePermissions::class);
+        $router->aliasMiddleware('road.webhook', VerifyRoadWebhookSignature::class);
     }
 
     /**
