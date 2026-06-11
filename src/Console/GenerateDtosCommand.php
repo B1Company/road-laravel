@@ -7,6 +7,7 @@ namespace B1Road\Laravel\Console;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Nette\PhpGenerator\PhpFile;
+use Nette\PhpGenerator\PsrPrinter;
 use Spatie\LaravelData\Data;
 
 /**
@@ -188,7 +189,10 @@ final class GenerateDtosCommand extends Command
             }
         }
 
-        return (string) $file;
+        // PSR-12 printer (4-space indent) so the output matches the rest of the
+        // tree; generated files are excluded from Pint, and `--check` compares
+        // this deterministic output against what's committed.
+        return (new PsrPrinter)->printFile($file);
     }
 
     /**
@@ -223,6 +227,24 @@ final class GenerateDtosCommand extends Command
 
         if (isset($schema['$ref']) && is_string($schema['$ref'])) {
             return [self::NAMESPACE.'\\'.$this->className(basename($schema['$ref'])), $nullable];
+        }
+
+        // Enums: infer the scalar type from the values. The @nestjs/swagger
+        // plugin emits a string-literal union as `{ type: "object", enum: [...] }`,
+        // so the `enum` values are more reliable than the `type` field.
+        if (isset($schema['enum']) && is_array($schema['enum']) && $schema['enum'] !== []) {
+            $allString = true;
+            $allInt = true;
+            foreach ($schema['enum'] as $value) {
+                $allString = $allString && is_string($value);
+                $allInt = $allInt && is_int($value);
+            }
+            if ($allString) {
+                return ['string', $nullable];
+            }
+            if ($allInt) {
+                return ['int', $nullable];
+            }
         }
 
         $type = $schema['type'] ?? null;

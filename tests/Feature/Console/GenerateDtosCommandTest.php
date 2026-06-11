@@ -90,3 +90,10 @@ it('fails --check when a generated DTO has drifted', function () {
 it('no-ops green on --check when the contract hub has not landed', function () {
     $this->artisan('road:generate-dtos', ['--spec' => '/nonexistent/openapi.json', '--check' => true])->assertExitCode(0);
 });
+
+it('keeps the committed generated DTOs in sync with the contract hub', function () {
+    // Uses the default paths: the committed apps/sdks/contract/openapi.json and
+    // src/DTO/Generated. Regenerate (`php artisan road:generate-dtos`) and commit
+    // if this fails. No-ops green in a checkout without the hub.
+    $this->artisan('road:generate-dtos', ['--check' => true])->assertExitCode(0);
+});

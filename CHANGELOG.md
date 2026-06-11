@@ -11,6 +11,12 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Added
+- Landed the OpenAPI contract hub (`apps/sdks/contract/openapi.json`, emitted
+  from the API's public Swagger doc) and generated the typed input DTOs into
+  `src/DTO/Generated/`. `road:generate-dtos --check` now runs as a test, so the
+  SDK's view of the API input contract can't drift silently.
+
 ## [0.1.0-alpha] — 2026-06-11
 
 ### Added

@@ -1,5 +1,6 @@
 {
     "preset": "laravel",
+    "exclude": ["src/DTO/Generated"],
     "rules": {
         "declare_strict_types": true,
         "ordered_imports": {
