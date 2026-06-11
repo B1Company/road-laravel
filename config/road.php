@@ -20,6 +20,22 @@ return [
         'version' => env('ROAD_API_VERSION', 'alpha'),
         'timeout' => (int) env('ROAD_API_TIMEOUT', 10),
         'jwks_ttl' => (int) env('ROAD_API_JWKS_TTL', 600),
+
+        /*
+        |----------------------------------------------------------------------
+        | Retries
+        |----------------------------------------------------------------------
+        | The transport retries only transient failures — 5xx and network
+        | errors — with exponential backoff + jitter. A 429 is never retried;
+        | its Retry-After is surfaced on RoadRateLimitException instead.
+        | Mutations carry an Idempotency-Key so a replay is de-duplicated.
+        */
+
+        'retry' => [
+            'enabled' => (bool) env('ROAD_API_RETRY_ENABLED', true),
+            'max_attempts' => (int) env('ROAD_API_RETRY_MAX_ATTEMPTS', 3),
+            'base_delay_ms' => (int) env('ROAD_API_RETRY_BASE_DELAY_MS', 250),
+        ],
     ],
 
     'auth_server' => [

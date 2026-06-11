@@ -10,6 +10,14 @@ use Throwable;
 abstract class RoadException extends RuntimeException
 {
     /**
+     * Base for the canonical docs links every Road error carries. The code's
+     * snake form is kebab-cased into the slug (`permission_denied` →
+     * `permission-denied`), matching the Road error catalog and the example
+     * in `standards/SDK_DX_BAR.md`.
+     */
+    private const DOCS_BASE = 'https://road.b1.app/errors';
+
+    /**
      * @param  string  $errorCode  Stable machine-readable code (e.g. `unauthenticated`).
      *                             We can't use the name `code` because the parent
      *                             RuntimeException already owns the integer `code` field.
@@ -37,9 +45,14 @@ abstract class RoadException extends RuntimeException
         return $this->requestId;
     }
 
-    public function docsUrl(): ?string
+    /**
+     * Every Road error is self-documenting: when the upstream didn't supply
+     * a `docs` link, derive the canonical one from the stable error code so
+     * an integrator always has somewhere to go (SDK_DX_BAR principle #6).
+     */
+    public function docsUrl(): string
     {
-        return $this->docsUrl;
+        return $this->docsUrl ?? self::DOCS_BASE.'/'.str_replace('_', '-', $this->errorCode);
     }
 
     /** @return array<string,mixed> */
@@ -59,7 +72,7 @@ abstract class RoadException extends RuntimeException
             'code' => $this->errorCode,
             'message' => $this->getMessage(),
             'requestId' => $this->requestId,
-            'docs' => $this->docsUrl,
+            'docs' => $this->docsUrl(),
         ], fn ($v) => $v !== null);
     }
 

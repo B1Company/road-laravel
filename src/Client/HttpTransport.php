@@ -7,20 +7,32 @@ namespace B1Road\Laravel\Client;
 use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\Exceptions\RoadAuthnException;
 use B1Road\Laravel\Exceptions\RoadException;
+use B1Road\Laravel\Exceptions\RoadNetworkException;
+use B1Road\Laravel\Exceptions\RoadRateLimitException;
+use B1Road\Laravel\Exceptions\RoadServerException;
 use B1Road\Laravel\Telemetry\RoadTelemetry;
 use B1Road\Laravel\Telemetry\TelemetryRequestEvent;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
  * Wraps Laravel's HTTP client to call the Road API. Reads the user's Bearer
  * from RoadContext per call — the indirection lets follow-ups slot a
  * service-token store in here without touching call sites.
+ *
+ * Mutations carry an `Idempotency-Key` so a retried attempt is de-duplicated
+ * server-side. Transient failures (5xx, network) are retried with exponential
+ * backoff + jitter; a 429 is never retried — its `Retry-After` is surfaced on
+ * the typed {@see RoadRateLimitException} instead.
  */
 final class HttpTransport implements HttpTransportInterface
 {
+    private const MAX_BACKOFF_MS = 10_000;
+
     public function __construct(
         private readonly HttpFactory $http,
         private readonly RoadContext $context,
@@ -47,48 +59,108 @@ final class HttpTransport implements HttpTransportInterface
             );
         }
 
+        $upperMethod = strtoupper($method);
+        if (! in_array($upperMethod, ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'], true)) {
+            throw new \InvalidArgumentException("Unsupported HTTP method: $method");
+        }
+
         $url = $this->buildUrl($path);
         $timeout = (int) $this->config->get('road.api.timeout', 10);
-        $upperMethod = strtoupper($method);
 
-        $pending = $this->http
-            ->withToken($token)
-            ->withHeaders([
-                'Accept' => 'application/json',
-                'X-Request-Id' => $this->context->requestId(),
-            ])
-            ->timeout($timeout)
-            ->acceptJson();
+        $retryEnabled = (bool) $this->config->get('road.api.retry.enabled', true);
+        $maxAttempts = $retryEnabled ? max(1, (int) $this->config->get('road.api.retry.max_attempts', 3)) : 1;
+        $baseDelayMs = max(0, (int) $this->config->get('road.api.retry.base_delay_ms', 250));
+
+        $headers = [
+            'Accept' => 'application/json',
+            'X-Request-Id' => $this->context->requestId(),
+        ];
+        // A mutation carries one stable Idempotency-Key for the lifetime of the
+        // call — generated before the retry loop so every replay sends the same
+        // key and Road applies the effect at most once.
+        if ($upperMethod !== 'GET') {
+            $headers['Idempotency-Key'] = (string) Str::uuid();
+        }
 
         $start = microtime(true);
 
-        try {
-            $response = match ($upperMethod) {
-                'GET' => $pending->get($url, $query ?? []),
-                'POST' => $pending->asJson()->post($url, $body ?? []),
-                'PATCH' => $pending->asJson()->patch($url, $body ?? []),
-                'PUT' => $pending->asJson()->put($url, $body ?? []),
-                'DELETE' => $pending->asJson()->delete($url, $body ?? []),
-                default => throw new \InvalidArgumentException("Unsupported HTTP method: $method"),
-            };
-        } catch (Throwable $e) {
-            $error = ErrorMapper::map(0, ['error' => ['code' => 'network_error', 'message' => $e->getMessage()]]);
-            $this->fireError($error, $upperMethod, $path, 0, $start);
+        for ($attempt = 1; ; $attempt++) {
+            $pending = $this->http
+                ->withToken($token)
+                ->withHeaders($headers)
+                ->timeout($timeout)
+                ->acceptJson();
+
+            try {
+                $response = match ($upperMethod) {
+                    'GET' => $pending->get($url, $query ?? []),
+                    'POST' => $pending->asJson()->post($url, $body ?? []),
+                    'PATCH' => $pending->asJson()->patch($url, $body ?? []),
+                    'PUT' => $pending->asJson()->put($url, $body ?? []),
+                    'DELETE' => $pending->asJson()->delete($url, $body ?? []),
+                };
+            } catch (Throwable $e) {
+                $error = new RoadNetworkException(
+                    message: $e->getMessage() !== '' ? $e->getMessage() : 'Network error talking to Road API.',
+                    previous: $e,
+                );
+                if ($attempt < $maxAttempts) {
+                    $this->backoff($attempt, $baseDelayMs);
+
+                    continue;
+                }
+                $this->telemetry->onError($error, $this->buildEvent($upperMethod, $path, 0, $start, null, $attempt));
+
+                throw $error;
+            }
+
+            $status = $response->status();
+
+            if ($response->successful()) {
+                $this->telemetry->onRequest($this->buildEvent($upperMethod, $path, $status, $start, $response, $attempt));
+
+                return $this->parseBody($response) ?? [];
+            }
+
+            $error = ErrorMapper::map(
+                $status,
+                $this->parseBody($response),
+                ['Retry-After' => $response->header('Retry-After')],
+            );
+
+            if ($attempt < $maxAttempts && $this->shouldRetry($error)) {
+                $this->backoff($attempt, $baseDelayMs);
+
+                continue;
+            }
+
+            $this->telemetry->onError($error, $this->buildEvent($upperMethod, $path, $status, $start, $response, $attempt));
+
             throw $error;
         }
+    }
 
-        $status = $response->status();
-        $event = $this->buildEvent($upperMethod, $path, $status, $start, $response);
+    /** Only transient failures are retried; 4xx (incl. 429) never are. */
+    private function shouldRetry(RoadException $error): bool
+    {
+        return $error instanceof RoadServerException || $error instanceof RoadNetworkException;
+    }
 
-        if (! $response->successful()) {
-            $error = ErrorMapper::map($status, $this->parseBody($response));
-            $this->telemetry->onError($error, $event);
-            throw $error;
+    /**
+     * Exponential backoff with full jitter, capped. Goes through
+     * Illuminate\Support\Sleep so tests can `Sleep::fake()` it and assert the
+     * schedule without real waits.
+     */
+    private function backoff(int $attempt, int $baseDelayMs): void
+    {
+        if ($baseDelayMs <= 0) {
+            return;
         }
 
-        $this->telemetry->onRequest($event);
+        $exponential = $baseDelayMs * (2 ** ($attempt - 1));
+        $delayMs = min($exponential + random_int(0, $baseDelayMs), self::MAX_BACKOFF_MS);
 
-        return $this->parseBody($response) ?? [];
+        Sleep::for($delayMs)->milliseconds();
     }
 
     private function buildUrl(string $path): string
@@ -120,7 +192,7 @@ final class HttpTransport implements HttpTransportInterface
         return is_array($parsed) ? $parsed : null;
     }
 
-    private function buildEvent(string $method, string $path, int $status, float $startSeconds, ?Response $response = null): TelemetryRequestEvent
+    private function buildEvent(string $method, string $path, int $status, float $startSeconds, ?Response $response = null, int $attempts = 1): TelemetryRequestEvent
     {
         // `traceparent` is the W3C trace id Road echoes; matches the
         // `traceId` field @b1-road/react and @b1-road/nestjs surface so a
@@ -134,12 +206,7 @@ final class HttpTransport implements HttpTransportInterface
             durationMs: (microtime(true) - $startSeconds) * 1000.0,
             requestId: $this->context->requestId(),
             traceId: ($traceId === null || $traceId === '') ? null : $traceId,
-            attempts: 1,
+            attempts: $attempts,
         );
-    }
-
-    private function fireError(RoadException $error, string $method, string $path, int $status, float $startSeconds): void
-    {
-        $this->telemetry->onError($error, $this->buildEvent($method, $path, $status, $startSeconds));
     }
 }

@@ -42,6 +42,9 @@ abstract class TestCase extends Orchestra
         $app['config']->set('app.key', 'base64:AckfSECXAvnyTQViQF/IST3yMcgGW36C5kP+JTxRRMc=');
         $app['config']->set('road.api.base_url', 'https://api.road.test');
         $app['config']->set('road.api.version', 'alpha');
+        // Retries still run in tests (so the loop is exercised), but with no
+        // real backoff wait. The dedicated retry tests set a delay + Sleep::fake().
+        $app['config']->set('road.api.retry.base_delay_ms', 0);
         $app['config']->set('road.auth_server.issuer_url', 'https://auth.test');
         $app['config']->set('road.auth_server.audience', 'road-api');
         $app['config']->set('road.auth_server.client_id', 'test-client');
