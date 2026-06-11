@@ -8,9 +8,10 @@ namespace B1Road\Laravel\Testing;
  * Fluent test-fixture builder. Mirrors `apps/sdks/road-nestjs/src/testing/scenario.ts`
  * — same shape so tests can be ported between SDKs by transliteration.
  *
- * MVP surface: `withUser`, `withBusinessUnit`, `withMember`, `withRole`.
- * Invitations and full authorize-result customisation arrive with the
- * full client surface follow-up.
+ * Surface: `withUser`, `withBusinessUnit`, `withMember`, `withRole`,
+ * `withInvitation`. Members are derived from declared memberships and roles
+ * from `withRole`, so the fake serves `members()` / `roles()` listings without
+ * extra wiring.
  */
 final class RoadScenario
 {
@@ -29,6 +30,13 @@ final class RoadScenario
      * @var array<string, array<string, list<string>>>
      */
     public array $rolesByBu = [];
+
+    /**
+     * Invitations per BU.
+     *
+     * @var array<string, list<array{id:string, email:string, roleId:string, roleName:string, status:string, acceptedVia:?string, invitedAt:string, expiresAt:string}>>
+     */
+    public array $invitationsByBu = [];
 
     public static function make(): self
     {
@@ -124,6 +132,39 @@ final class RoadScenario
         ];
 
         $this->businessUnits[$buId]['memberCount']++;
+
+        return $this;
+    }
+
+    /**
+     * Declare a pending (or otherwise-stated) invitation on a BU so the fake
+     * can serve `businessUnits($buId)->invitations()` listings.
+     */
+    public function withInvitation(
+        string $buId,
+        string $email,
+        string $roleId = 'r_member',
+        ?string $roleName = null,
+        string $status = 'pending',
+        ?string $id = null,
+    ): self {
+        if (! isset($this->businessUnits[$buId])) {
+            throw new \InvalidArgumentException(
+                "Business unit $buId not declared. Call withBusinessUnit() first."
+            );
+        }
+
+        $this->invitationsByBu[$buId] ??= [];
+        $this->invitationsByBu[$buId][] = [
+            'id' => $id ?? 'inv_'.$buId.'_'.count($this->invitationsByBu[$buId]),
+            'email' => $email,
+            'roleId' => $roleId,
+            'roleName' => $roleName ?? $roleId,
+            'status' => $status,
+            'acceptedVia' => null,
+            'invitedAt' => '2024-01-01T00:00:00Z',
+            'expiresAt' => '2024-02-01T00:00:00Z',
+        ];
 
         return $this;
     }

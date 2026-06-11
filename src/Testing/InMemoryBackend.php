@@ -11,10 +11,12 @@ use B1Road\Laravel\Exceptions\RoadNotFoundException;
  * In-memory router for fake Road API calls. Port of
  * `apps/sdks/road-nestjs/src/testing/in-memory-backend.ts`.
  *
- * Matches `method + path` against a small set of handlers and serves
- * data from the test scenario. Implements the same `/iam/authorization/authorize`
- * verdict logic Road's real engine uses for the basic case — manage:X
- * expands to CRUD, `*` is wildcard.
+ * Matches `method + path` against a set of handlers and serves data from the
+ * test scenario. The authorize verdict logic mirrors Road's real engine for
+ * the basic case — `manage:X` expands to CRUD, `*` is wildcard. Read paths
+ * (members, roles, invitations, effective permissions) are served from the
+ * scenario; mutations acknowledge with a plausible echo so an integrator's
+ * code under test runs without the network.
  */
 final class InMemoryBackend
 {
@@ -36,6 +38,7 @@ final class InMemoryBackend
         $method = strtoupper($method);
         $path = '/'.ltrim($path, '/');
 
+        // ── Identity & self ────────────────────────────────────────────────
         if ($method === 'GET' && $path === '/iam/identity/me') {
             $user = $userId !== null ? $this->scenario->findUser($userId) : null;
             if ($user === null) {
@@ -49,20 +52,129 @@ final class InMemoryBackend
             $memberships = $userId !== null ? $this->scenario->memberships($userId)['memberships'] : [];
 
             return ['status' => 200, 'body' => [
-                'data' => [
-                    'memberships' => $memberships,
-                    'pendingInvitations' => [],
-                ],
+                'data' => ['memberships' => $memberships, 'pendingInvitations' => []],
             ]];
         }
 
-        // Effective permissions — scope-parameterized, returning (action,
-        // subject) TUPLES keyed by scope id. Mirrors the real
-        // `GET /iam/authorization/me/permissions?scopes=<csv>`. Only answers
-        // for the requested scopes, so a test catches an SDK that sends a
-        // missing/wrong scopes list instead of silently passing.
         if ($method === 'GET' && $path === '/iam/authorization/me/permissions') {
             return $this->handleMyPermissions($query ?? [], $userId);
+        }
+
+        // ── Authorization checks ───────────────────────────────────────────
+        if ($method === 'POST' && $path === '/iam/authorization/authorize/batch') {
+            return $this->handleAuthorizeBatch($body ?? []);
+        }
+
+        if ($method === 'POST' && $path === '/iam/authorization/authorize') {
+            return $this->handleAuthorize($body ?? []);
+        }
+
+        // ── IAM control plane: scopes, roles, assignments ──────────────────
+        if ($method === 'GET' && $path === '/iam/authorization/scopes/lookup') {
+            return ['status' => 200, 'body' => ['data' => $this->synthScope('scope_lookup', [
+                'type' => (string) ($query['type'] ?? 'business_unit'),
+                'externalId' => isset($query['externalId']) ? (string) $query['externalId'] : null,
+            ])]];
+        }
+
+        if ($method === 'POST' && $path === '/iam/authorization/scopes') {
+            return ['status' => 201, 'body' => ['data' => $this->synthScope('scope_new', [
+                'type' => (string) (($body['type'] ?? null) ?: 'business_unit'),
+                'externalId' => isset($body['externalId']) ? (string) $body['externalId'] : null,
+                'parentScopeId' => isset($body['parentScopeId']) ? (string) $body['parentScopeId'] : null,
+                'metadata' => is_array($body['metadata'] ?? null) ? $body['metadata'] : [],
+            ])]];
+        }
+
+        if ($method === 'GET' && preg_match('#^/iam/authorization/scopes/([^/]+)/roles$#', $path, $m) === 1) {
+            return $this->paginate($this->rolesForScope($m[1]));
+        }
+
+        if ($method === 'POST' && preg_match('#^/iam/authorization/scopes/([^/]+)/roles$#', $path) === 1) {
+            return ['status' => 201, 'body' => ['data' => $this->makeRole($body ?? [])]];
+        }
+
+        if (preg_match('#^/iam/authorization/scopes/([^/]+)/roles/([^/]+)$#', $path, $m) === 1) {
+            if ($method === 'DELETE') {
+                return ['status' => 200, 'body' => ['data' => []]];
+            }
+            if ($method === 'PATCH') {
+                return ['status' => 200, 'body' => ['data' => $this->makeRole(array_merge(['name' => $m[2]], $body ?? []), $m[2])]];
+            }
+            // GET single role
+            foreach ($this->rolesForScope($m[1]) as $role) {
+                if ($role['id'] === $m[2]) {
+                    return ['status' => 200, 'body' => ['data' => $role]];
+                }
+            }
+            throw new RoadNotFoundException(sprintf('Role %s not in scenario.', $m[2]));
+        }
+
+        if ($method === 'GET' && preg_match('#^/iam/authorization/scopes/([^/]+)$#', $path, $m) === 1) {
+            return ['status' => 200, 'body' => ['data' => $this->synthScope($m[1])]];
+        }
+
+        if ($method === 'GET' && preg_match('#^/iam/authorization/subjects/([^/]+)/([^/]+)/permissions$#', $path, $m) === 1) {
+            $scopeId = (string) ($query['scopeId'] ?? '');
+            $bu = $this->resolveBuFromScope($scopeId);
+            $perms = $bu !== null ? $this->scenario->effectivePermissions($m[2], (string) $bu['id']) : [];
+
+            return ['status' => 200, 'body' => ['data' => ['permissions' => $perms]]];
+        }
+
+        if ($method === 'GET' && preg_match('#^/iam/authorization/subjects/([^/]+)/([^/]+)/assignments$#', $path) === 1) {
+            return ['status' => 200, 'body' => ['data' => []]];
+        }
+
+        if ($method === 'POST' && $path === '/iam/authorization/assignments') {
+            return ['status' => 201, 'body' => ['data' => $this->makeAssignment($body ?? [])]];
+        }
+
+        if ($method === 'DELETE' && preg_match('#^/iam/authorization/assignments/([^/]+)$#', $path) === 1) {
+            return ['status' => 200, 'body' => ['data' => []]];
+        }
+
+        // ── Organization: members & invitations ────────────────────────────
+        if (preg_match('#^/organization/business-units/([^/]+)/members/([^/]+)/(suspend|reinstate)$#', $path) === 1 && $method === 'POST') {
+            return ['status' => 200, 'body' => ['data' => []]];
+        }
+
+        if ($method === 'DELETE' && preg_match('#^/organization/business-units/([^/]+)/members/([^/]+)$#', $path) === 1) {
+            return ['status' => 200, 'body' => ['data' => []]];
+        }
+
+        if ($method === 'GET' && preg_match('#^/organization/business-units/([^/]+)/members/([^/]+)$#', $path, $m) === 1) {
+            foreach ($this->membersForBu($m[1]) as $member) {
+                if ($member['id'] === $m[2]) {
+                    return ['status' => 200, 'body' => ['data' => $member]];
+                }
+            }
+            throw new RoadNotFoundException(sprintf('Member %s not in scenario.', $m[2]));
+        }
+
+        if ($method === 'GET' && preg_match('#^/organization/business-units/([^/]+)/members$#', $path, $m) === 1) {
+            return $this->paginate($this->membersForBu($m[1]));
+        }
+
+        if ($method === 'GET' && preg_match('#^/organization/business-units/([^/]+)/invitations$#', $path, $m) === 1) {
+            return $this->paginate($this->scenario->invitationsByBu[$m[1]] ?? []);
+        }
+
+        if ($method === 'POST' && preg_match('#^/organization/business-units/([^/]+)/invitations$#', $path) === 1) {
+            return ['status' => 201, 'body' => ['data' => $this->makeInvitation(
+                'inv_new',
+                (string) ($body['email'] ?? ''),
+                (string) ($body['roleId'] ?? 'r_member'),
+                'pending',
+            )]];
+        }
+
+        if ($method === 'POST' && preg_match('#^/organization/business-units/([^/]+)/invitations/([^/]+)/cancel$#', $path, $m) === 1) {
+            return ['status' => 200, 'body' => ['data' => $this->transitionInvitation($m[2], 'cancelled')]];
+        }
+
+        if ($method === 'POST' && preg_match('#^/organization/invitations/([^/]+)/(accept|reject)$#', $path, $m) === 1) {
+            return ['status' => 200, 'body' => ['data' => $this->transitionInvitation($m[1], $m[2] === 'accept' ? 'accepted' : 'rejected')]];
         }
 
         if ($method === 'GET' && preg_match('#^/organization/business-units/([^/]+)$#', $path, $m) === 1) {
@@ -72,14 +184,6 @@ final class InMemoryBackend
             }
 
             return ['status' => 200, 'body' => ['data' => $bu]];
-        }
-
-        if ($method === 'POST' && $path === '/iam/authorization/authorize') {
-            return $this->handleAuthorize($body ?? []);
-        }
-
-        if ($method === 'POST' && $path === '/iam/authorization/authorize/batch') {
-            return $this->handleAuthorizeBatch($body ?? []);
         }
 
         throw new RoadNotFoundException(sprintf('No fake handler for %s %s.', $method, $path));
@@ -99,7 +203,7 @@ final class InMemoryBackend
         $bu = $this->resolveBuFromScope($scopeId);
         $rolesOnBu = $bu === null
             ? []
-            : $this->rolesUserHasOnBu($subjectId, $bu['id']);
+            : $this->rolesUserHasOnBu($subjectId, (string) $bu['id']);
 
         $reason = $verdict
             ? sprintf('granted: %s held by roles [%s]', $required, implode(', ', $rolesOnBu))
@@ -179,8 +283,7 @@ final class InMemoryBackend
 
     /**
      * Effective `(action, subject)` tuples for a user on a scope id, as
-     * declared in the scenario (manage→CRUD expansion is the API's job and
-     * is exercised API-side, not here).
+     * declared in the scenario.
      *
      * @return list<array{action:string, subject:string}>
      */
@@ -211,7 +314,7 @@ final class InMemoryBackend
             return false;
         }
 
-        $effective = $this->scenario->effectivePermissions($subjectId, $bu['id']);
+        $effective = $this->scenario->effectivePermissions($subjectId, (string) $bu['id']);
 
         if (in_array(Permission::WILDCARD, $effective, true)) {
             return true;
@@ -271,5 +374,159 @@ final class InMemoryBackend
         }
 
         return $roles;
+    }
+
+    /**
+     * Members of a BU, derived from declared memberships so `members()`
+     * listings work without a separate builder.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function membersForBu(string $buId): array
+    {
+        $members = [];
+        foreach ($this->scenario->users as $uid => $user) {
+            foreach ($this->scenario->memberships($uid)['memberships'] as $m) {
+                if (($m['businessUnit']['id'] ?? null) !== $buId) {
+                    continue;
+                }
+                $members[] = [
+                    'id' => 'mem_'.$buId.'_'.$uid,
+                    'userId' => $uid,
+                    'status' => (string) ($m['status'] ?? 'active'),
+                    'joinedAt' => (string) ($m['joinedAt'] ?? ''),
+                    'name' => (string) ($user['name'] ?? $uid),
+                    'email' => (string) ($user['email'] ?? ''),
+                    'roles' => $m['roles'] ?? [],
+                ];
+            }
+        }
+
+        return $members;
+    }
+
+    /**
+     * Roles defined on the BU behind a scope id (from `withRole`).
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function rolesForScope(string $scopeId): array
+    {
+        $bu = $this->resolveBuFromScope($scopeId);
+        if ($bu === null) {
+            return [];
+        }
+
+        $roles = [];
+        foreach ($this->scenario->rolesByBu[(string) $bu['id']] ?? [] as $name => $permissions) {
+            $roles[] = $this->makeRole(['name' => $name, 'permissions' => array_values($permissions)], 'r_'.$name);
+        }
+
+        return $roles;
+    }
+
+    /**
+     * @param  array<string,mixed>  $input
+     * @return array<string,mixed>
+     */
+    private function makeRole(array $input, ?string $id = null): array
+    {
+        $name = (string) ($input['name'] ?? '');
+
+        return [
+            'id' => $id ?? ('r_'.($name !== '' ? $name : 'new')),
+            'name' => $name,
+            'description' => $input['description'] ?? null,
+            'permissions' => array_values(array_filter((array) ($input['permissions'] ?? []), 'is_string')),
+            'isSystem' => (bool) ($input['isSystem'] ?? false),
+            'assignmentCount' => (int) ($input['assignmentCount'] ?? 0),
+            'createdAt' => '2024-01-01T00:00:00Z',
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $input
+     * @return array<string,mixed>
+     */
+    private function makeAssignment(array $input): array
+    {
+        return [
+            'id' => 'assign_new',
+            'subjectType' => (string) ($input['subjectType'] ?? 'user'),
+            'subjectId' => (string) ($input['subjectId'] ?? ''),
+            'roleId' => (string) ($input['roleId'] ?? ''),
+            'scopeId' => (string) ($input['scopeId'] ?? ''),
+            'grantedBy' => 'fake',
+            'grantedAt' => '2024-01-01T00:00:00Z',
+            'expiresAt' => isset($input['expiresAt']) ? (string) $input['expiresAt'] : null,
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $overrides
+     * @return array<string,mixed>
+     */
+    private function synthScope(string $scopeId, array $overrides = []): array
+    {
+        return array_merge([
+            'id' => $scopeId,
+            'type' => 'business_unit',
+            'externalId' => null,
+            'parentScopeId' => null,
+            'parentScope' => null,
+            'metadata' => [],
+            'createdAt' => '2024-01-01T00:00:00Z',
+        ], $overrides);
+    }
+
+    /** @return array<string,mixed> */
+    private function makeInvitation(string $id, string $email, string $roleId, string $status): array
+    {
+        return [
+            'id' => $id,
+            'email' => $email,
+            'roleId' => $roleId,
+            'roleName' => $roleId,
+            'status' => $status,
+            'acceptedVia' => $status === 'accepted' ? 'manual' : null,
+            'invitedAt' => '2024-01-01T00:00:00Z',
+            'expiresAt' => '2024-02-01T00:00:00Z',
+        ];
+    }
+
+    /**
+     * Find a declared invitation by id (across BUs) and return it with the
+     * new status, synthesising one when the test didn't declare it.
+     *
+     * @return array<string,mixed>
+     */
+    private function transitionInvitation(string $id, string $status): array
+    {
+        foreach ($this->scenario->invitationsByBu as $list) {
+            foreach ($list as $invitation) {
+                if (($invitation['id'] ?? null) === $id) {
+                    $invitation['status'] = $status;
+                    $invitation['acceptedVia'] = $status === 'accepted' ? 'manual' : null;
+
+                    return $invitation;
+                }
+            }
+        }
+
+        return $this->makeInvitation($id, 'unknown@test.local', 'r_member', $status);
+    }
+
+    /**
+     * Wrap rows in the cursor-pagination envelope the API emits.
+     *
+     * @param  list<array<string,mixed>>  $rows
+     * @return array{status:int, body:array<string,mixed>}
+     */
+    private function paginate(array $rows): array
+    {
+        return ['status' => 200, 'body' => [
+            'data' => $rows,
+            'pagination' => ['cursor' => null, 'hasMore' => false, 'totalCount' => count($rows)],
+        ]];
     }
 }

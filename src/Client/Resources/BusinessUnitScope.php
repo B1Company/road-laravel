@@ -9,10 +9,12 @@ use B1Road\Laravel\DTO\BusinessUnitDetail;
 
 /**
  * Lightweight "navigator" returned by `Road::client()->businessUnits($buId)`.
- * No network call until the integrator asks for something concrete.
+ * No network call until the integrator asks for something concrete — and the
+ * returned collections act on the BU they came from (SDK_DX_BAR principle #3):
  *
- * MVP exposes only `fetch()`. The `members()` / `roles()` /
- * `invitations()` accessors land with the full client surface follow-up.
+ *   $scope = Road::client()->businessUnits($buId);
+ *   foreach ($scope->members() as $member) { ... }
+ *   $scope->roles()->create([...]);
  */
 final class BusinessUnitScope
 {
@@ -27,5 +29,20 @@ final class BusinessUnitScope
         $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
 
         return BusinessUnitDetail::from($data);
+    }
+
+    public function members(): MemberCollection
+    {
+        return new MemberCollection($this->http, $this->buId);
+    }
+
+    public function roles(): RoleCollection
+    {
+        return RoleCollection::forBusinessUnit($this->http, $this->buId);
+    }
+
+    public function invitations(): InvitationCollection
+    {
+        return new InvitationCollection($this->http, $this->buId);
     }
 }
