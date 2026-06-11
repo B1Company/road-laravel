@@ -68,3 +68,19 @@ it('accepts a millisecond timestamp as well as seconds', function () {
     // The signed string uses the literal header value, so sign with the ms form.
     expect($verifier->verify($body, signWebhook($body, $tsMs), $tsMs))->toBeTrue();
 });
+
+it('accepts the shared golden signature vector (cross-SDK contract)', function () {
+    /** @var array<string,mixed> $vector */
+    $vector = json_decode(
+        (string) file_get_contents(dirname(__DIR__, 2).'/../contract-fixtures/webhook.signed-delivery.json'),
+        associative: true,
+    );
+
+    // Wide tolerance — this vector pins the HMAC signature contract that the API
+    // signer and every SDK verifier share, not the replay window (tested above).
+    $verifier = new WebhookSignatureVerifier((string) $vector['secret'], toleranceSeconds: 10_000_000_000);
+
+    expect($verifier->verify($vector['rawBody'], $vector['signatureHeader'], (string) $vector['timestamp']))->toBeTrue();
+    // A single tampered byte in the signed body fails.
+    expect($verifier->verify($vector['rawBody'].' ', $vector['signatureHeader'], (string) $vector['timestamp']))->toBeFalse();
+});

@@ -31,6 +31,15 @@ function contractFixtures(): array
 }
 
 it('decodes every recorded contract fixture through the matching DTO', function (string $file, array $fixture) {
+    // Non-wire fixtures (e.g. the webhook signature vector) live alongside the
+    // recorded responses but aren't DTO-decodable — they're guarded by their own
+    // tests. Skip anything without a `{ body: { data } }` wire envelope.
+    if (! isset($fixture['body'])) {
+        expect($fixture)->toBeArray();
+
+        return;
+    }
+
     /** @var array<string,mixed> $data */
     $data = $fixture['body']['data'] ?? [];
 

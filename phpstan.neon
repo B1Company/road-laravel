@@ -12,6 +12,12 @@ parameters:
         - src
     tmpDir: .phpstan-cache
     treatPhpDocTypesAsCertain: false
+    # Analyse against the whole supported PHP range, not just the CI runner's
+    # version — catches 8.2-incompatible code even when CI runs on 8.3 (the
+    # advisory currently pins the test matrix to 8.3).
+    phpVersion:
+        min: 80200
+        max: 80400
     # PHPStan 2 reports missing iterable value types by default; we annotate the
     # value shapes we care about (DTO payloads, wire bodies) and don't require a
     # generic type on every framework `array` param.
