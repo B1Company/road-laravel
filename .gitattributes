@@ -1,0 +1,16 @@
+# Keep `composer require b1-road/laravel` lean — strip dev-only paths from the
+# distributed tarball (the Composer analog of npm's `files` allowlist).
+/.editorconfig       export-ignore
+/.gitattributes      export-ignore
+/.gitignore          export-ignore
+/.github             export-ignore
+/phpunit.xml.dist    export-ignore
+/phpstan.neon        export-ignore
+/pint.json           export-ignore
+/tests               export-ignore
+/docs                export-ignore
+/CHANGELOG.md        export-ignore
+
+# Normalize line endings for shipped source.
+*.php   text eol=lf
+*.json  text eol=lf

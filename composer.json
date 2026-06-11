@@ -3,6 +3,19 @@
     "description": "Official Road SDK for Laravel — BFF auth, proxy, and client for the Road IAM platform.",
     "type": "library",
     "license": "MIT",
+    "homepage": "https://portal.road.b1.app",
+    "authors": [
+        {
+            "name": "B1 Produtos Digitais Ltda",
+            "homepage": "https://portal.road.b1.app",
+            "role": "Maintainer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/B1Company/road/issues",
+        "source": "https://github.com/B1Company/road/tree/main/apps/sdks/road-laravel",
+        "docs": "https://portal.road.b1.app"
+    },
     "keywords": ["road", "laravel", "iam", "rbac", "auth", "oidc", "bff", "b1"],
     "require": {
         "php": "^8.2",
@@ -29,6 +42,9 @@
         "pestphp/pest-plugin-laravel": "^3.0",
         "phpstan/phpstan": "^1.11"
     },
+    "suggest": {
+        "inertiajs/inertia-laravel": "Auto-mounts ShareRoadContext and powers the zero-JWT @b1-road/react widget integration (^2.0)."
+    },
     "autoload": {
         "psr-4": {
             "B1Road\\Laravel\\": "src/"
@@ -49,12 +65,19 @@
             }
         }
     },
+    "scripts": {
+        "test": "pest",
+        "test:coverage": "pest --coverage --min=85",
+        "lint": "pint --test",
+        "format": "pint",
+        "analyse": "phpstan analyse --no-progress --memory-limit=512M"
+    },
     "config": {
         "sort-packages": true,
         "allow-plugins": {
             "pestphp/pest-plugin": true
         }
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }
