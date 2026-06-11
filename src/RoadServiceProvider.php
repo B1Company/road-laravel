@@ -17,6 +17,7 @@ use B1Road\Laravel\Client\HttpTransport;
 use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\Client\RoadClient;
 use B1Road\Laravel\Console\DoctorCommand;
+use B1Road\Laravel\Console\GenerateDtosCommand;
 use B1Road\Laravel\Console\InstallCommand;
 use B1Road\Laravel\Console\WhoamiCommand;
 use B1Road\Laravel\Context\ContextResolver;
@@ -179,6 +180,7 @@ final class RoadServiceProvider extends ServiceProvider
                 InstallCommand::class,
                 DoctorCommand::class,
                 WhoamiCommand::class,
+                GenerateDtosCommand::class,
             ]);
         }
     }
