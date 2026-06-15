@@ -11,6 +11,14 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Fixed
+- **Proxy allowlist now covers the caller's own `me/*` endpoints**
+  (`me/business-units`, `me/profile`, `me/permissions`). The default allowlist
+  shipped only `organization/*` + `iam/*`, so `@b1-road/react` widgets running in
+  cookie mode (e.g. `<BusinessUnitSwitcher>` via `useMyBusinessUnits`) 404'd
+  through the proxy. Surfaced by the Beacon demo (the first real cookie-mode
+  consumer).
+
 ### Added
 - **`Subject|string` / `Action|string` parity with `@b1-road/nestjs`** across
   `Road::can()`, the `#[RequirePermission]` attribute, and the `road.permission`

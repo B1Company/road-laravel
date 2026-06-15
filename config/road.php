@@ -62,6 +62,9 @@ return [
             'organization/*',
             'iam/identity/*',
             'iam/authorization/*',
+            // The caller's own self-service endpoints (business units, profile,
+            // permissions) — what @b1-road/react widgets read in cookie mode.
+            'me/*',
         ],
     ],
 

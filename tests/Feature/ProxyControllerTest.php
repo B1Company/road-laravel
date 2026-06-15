@@ -44,6 +44,26 @@ it('forwards an allow-listed path with the session Bearer attached', function ()
     });
 });
 
+it('forwards the caller self-service me/* paths so cookie-mode widgets work', function () {
+    seedSessionTokens();
+
+    Http::fake([
+        'api.road.test/api/alpha/me/business-units' => Http::response(
+            ['data' => ['memberships' => [], 'pendingInvitations' => []]],
+            200,
+        ),
+    ]);
+
+    $this->getJson('/road-api/me/business-units')
+        ->assertOk()
+        ->assertJsonPath('data.memberships', []);
+
+    Http::assertSent(fn (HttpRequest $req) => str_starts_with(
+        $req->url(),
+        'https://api.road.test/api/alpha/me/business-units',
+    ));
+});
+
 it('404s a path outside the proxy allowlist without calling upstream', function () {
     seedSessionTokens();
 
