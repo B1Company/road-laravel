@@ -29,8 +29,8 @@ final class Can
     public function __construct(
         private readonly HttpTransportInterface $http,
         private readonly RoadContext $context,
-        Action $action,
-        Subject $subject,
+        Action|string $action,
+        Subject|string $subject,
     ) {
         $this->permission = Permission::format($action, $subject);
     }

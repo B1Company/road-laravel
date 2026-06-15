@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel\Http\Middleware;
 
-use B1Road\Laravel\Authorization\Action;
-use B1Road\Laravel\Authorization\Subject;
 use B1Road\Laravel\Facades\Road;
 use Closure;
 use Illuminate\Http\Request;
@@ -19,7 +17,8 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * Args:
  *   1. action (`create | read | update | delete | manage`)
- *   2. Subject (`BusinessUnit | Member | Role | ...` — PascalCase)
+ *   2. Subject (`BusinessUnit | Member | Role | ...` — PascalCase; or any
+ *      platform-defined subject string, e.g. `Project`)
  *   3. scope source: either a route-parameter name (`buId`) or a
  *      request-input key prefixed with `input:` (`input:business_unit_id`)
  *
@@ -43,11 +42,12 @@ final class RequirePermission
 
         [$actionArg, $subjectArg, $scopeSource] = $args;
 
-        $action = Action::fromConst($actionArg);
-        $subject = Subject::fromConst($subjectArg);
         $scopeId = $this->resolveScopeId($request, $scopeSource);
 
-        Road::assert(Road::can($action, $subject)->in($scopeId));
+        // Action + Subject pass through as raw strings — `Road::can()` accepts
+        // the canonical enum or a platform-defined string subject (e.g.
+        // `read,Project,buId`), matching @b1-road/nestjs.
+        Road::assert(Road::can($actionArg, $subjectArg)->in($scopeId));
 
         /** @var Response $response */
         $response = $next($request);

@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static RoadContext context()
  * @method static string requestId()
  * @method static RoadClient client()
- * @method static Can can(Action $action, Subject $subject)
+ * @method static Can can(Action|string $action, Subject|string $subject)
  * @method static CanBatch canMany(array $checks)
  * @method static void assert(Can $check)
  * @method static RoadManager asService()

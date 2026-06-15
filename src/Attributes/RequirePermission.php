@@ -16,6 +16,12 @@ use B1Road\Laravel\Authorization\Subject;
  *       public function index(string $buId) { ... }
  *   }
  *
+ * Both `action` and `subject` accept either the canonical enum or a raw
+ * string, so a platform-defined subject works the same as in
+ * `@b1-road/nestjs`:
+ *
+ *   #[RequirePermission(Action::Read, 'Project', in: 'buId')]
+ *
  * The `in` argument is the route parameter name whose value is the
  * scope id (typically the Business Unit id). For request-input
  * sources, prefix with `input:` (e.g. `in: 'input:business_unit_id'`).
@@ -32,8 +38,8 @@ use B1Road\Laravel\Authorization\Subject;
 final readonly class RequirePermission
 {
     public function __construct(
-        public Action $action,
-        public Subject $subject,
+        public Action|string $action,
+        public Subject|string $subject,
         public string $in,
     ) {}
 }

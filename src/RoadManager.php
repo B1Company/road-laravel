@@ -136,8 +136,14 @@ final class RoadManager
      * `trace()` is invoked.
      *
      *   Road::can(Action::Read, Subject::Member)->in($buId)->check();
+     *
+     * `$action` and `$subject` accept either the canonical enum or a raw
+     * string, so platform-defined subjects outside Road's core algebra work
+     * the same way they do in `@b1-road/nestjs`:
+     *
+     *   Road::can(Action::Create, 'Project')->in($buId)->check();
      */
-    public function can(Action $action, Subject $subject): Can
+    public function can(Action|string $action, Subject|string $subject): Can
     {
         return new Can(
             $this->transport(),

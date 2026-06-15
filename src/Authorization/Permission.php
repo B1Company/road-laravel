@@ -14,9 +14,19 @@ final class Permission
 {
     public const WILDCARD = '*';
 
-    public static function format(Action $action, Subject $subject): string
+    /**
+     * Format an `action:Subject` permission string. Both arguments accept
+     * either the canonical enum or a raw string, so platform-defined subjects
+     * outside Road's core algebra (e.g. `'Project'`) format the same way they
+     * do in `@b1-road/nestjs`. A string action is lower-cased to the wire verb;
+     * a string subject is passed through (the wire form is PascalCase).
+     */
+    public static function format(Action|string $action, Subject|string $subject): string
     {
-        return $action->value.':'.$subject->value;
+        $verb = $action instanceof Action ? $action->value : strtolower(trim($action));
+        $noun = $subject instanceof Subject ? $subject->value : trim($subject);
+
+        return $verb.':'.$noun;
     }
 
     public static function isWildcard(string $permission): bool

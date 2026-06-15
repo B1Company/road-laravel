@@ -12,6 +12,14 @@ contract from `alpha` to `v1` (see
 ## [Unreleased]
 
 ### Added
+- **`Subject|string` / `Action|string` parity with `@b1-road/nestjs`** across
+  `Road::can()`, the `#[RequirePermission]` attribute, and the `road.permission`
+  middleware. Platform-defined subjects outside Road's core algebra (e.g.
+  `'Project'`) now gate the same way they do in the Nest SDK
+  (`#[RequirePermission(Action::Read, 'Project', in: 'buId')]`,
+  `Road::can(Action::Create, 'Project')`, `road.permission:create,Project,buId`)
+  — no `->raw()` escape hatch needed. Backward compatible: the canonical
+  `Action`/`Subject` enums keep working unchanged.
 - Landed the OpenAPI contract hub (`apps/sdks/contract/openapi.json`, emitted
   from the API's public Swagger doc) and generated the typed input DTOs into
   `src/DTO/Generated/`. `road:generate-dtos --check` now runs as a test, so the

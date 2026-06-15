@@ -212,3 +212,77 @@ it('Road::can()->trace() sources grants from the caller effective permissions', 
     expect($trace->grants[0]['permissions'])->toContain('read:Member');
     expect($trace->grants[0]['permissions'])->toContain('read:Role');
 });
+
+// ── Platform-defined string subjects (parity with @b1-road/nestjs) ──────────
+
+function scenarioWithProjectRoles(): RoadScenario
+{
+    return RoadScenario::make()
+        ->withUser('u_admin', email: 'admin@b1.app')
+        ->withUser('u_viewer', email: 'viewer@b1.app')
+        ->withUser('u_guest', email: 'guest@b1.app')
+        ->withBusinessUnit('bu_1')
+        ->withRole('bu_1', 'Admin', permissions: ['manage:Project'])
+        ->withRole('bu_1', 'Viewer', permissions: ['read:Project'])
+        ->withMember('bu_1', 'u_admin', roles: ['Admin'])
+        ->withMember('bu_1', 'u_viewer', roles: ['Viewer'])
+        ->withMember('bu_1', 'u_guest', roles: []);
+}
+
+it('Road::can() accepts a platform-defined string subject', function () {
+    Road::fake(scenarioWithProjectRoles());
+
+    $this->actingAsRoadUser('u_admin');
+    expect(Road::can(Action::Create, 'Project')->in('bu_1')->permissionString())->toBe('create:Project');
+    expect(Road::can(Action::Create, 'Project')->in('bu_1')->check())->toBeTrue(); // manage:Project expands
+    expect(Road::can(Action::Delete, 'Project')->in('bu_1')->check())->toBeTrue();
+
+    $this->actingAsRoadUser('u_viewer');
+    expect(Road::can(Action::Read, 'Project')->in('bu_1')->check())->toBeTrue();
+    expect(Road::can(Action::Create, 'Project')->in('bu_1')->check())->toBeFalse();
+});
+
+class AuthzProjectController extends Controller
+{
+    #[RequirePermission(Action::Read, 'Project', in: 'buId')]
+    public function index(string $buId): array
+    {
+        return ['ok' => true, 'bu' => $buId];
+    }
+}
+
+it('the #[RequirePermission] attribute enforces a string subject', function () {
+    Road::fake(scenarioWithProjectRoles());
+
+    Route::middleware(['road.errors', 'road', 'road.permission.attribute'])
+        ->get('/bus/{buId}/projects-attr', [AuthzProjectController::class, 'index']);
+
+    $this->actingAsRoadUser('u_viewer');
+    $this->getJson('/bus/bu_1/projects-attr')
+        ->assertOk()
+        ->assertJsonPath('ok', true);
+
+    // Refresh container so RoadContext re-resolves to the denied user.
+    $this->actingAsRoadUser('u_guest');
+    $this->getJson('/bus/bu_1/projects-attr')
+        ->assertForbidden()
+        ->assertJsonPath('error.code', 'permission_denied');
+});
+
+it('the road.permission middleware enforces a string subject', function () {
+    Road::fake(scenarioWithProjectRoles());
+
+    Route::middleware(['road.errors', 'road', 'road.permission:create,Project,buId'])
+        ->post('/bus/{buId}/projects', fn (string $buId) => ['ok' => true]);
+
+    $this->actingAsRoadUser('u_admin');
+    $this->postJson('/bus/bu_1/projects')
+        ->assertOk()
+        ->assertJsonPath('ok', true);
+
+    // Viewer holds only read:Project → create is denied.
+    $this->actingAsRoadUser('u_viewer');
+    $this->postJson('/bus/bu_1/projects')
+        ->assertForbidden()
+        ->assertJsonPath('error.code', 'permission_denied');
+});
