@@ -12,6 +12,13 @@ contract from `alpha` to `v1` (see
 ## [Unreleased]
 
 ### Fixed
+- **The `/road-api` proxy route now runs in the `web` middleware group.** It was
+  mounted with only `road.errors` + `road`, so `StartSession` never ran and the
+  session-backed token store was empty on every proxied call — each one 401'd
+  and `@b1-road/react` cookie-mode widgets span in an `onUnauthenticated` redirect
+  loop. (The proxy tests seed the session through the harness, so they never
+  caught it; the Beacon demo in a real browser did.) `web` also brings CSRF
+  (the React client sends the `XSRF-TOKEN` header) and cookie encryption.
 - **`Road::can()` / `canMany()` no longer forward a `subjectId`** to
   `/iam/authorization/authorize[/batch]`. The BFF holds the caller's access
   token, not their Road user id; forwarding the Auth Server `sub` made the API
