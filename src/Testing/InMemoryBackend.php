@@ -62,11 +62,11 @@ final class InMemoryBackend
 
         // ── Authorization checks ───────────────────────────────────────────
         if ($method === 'POST' && $path === '/iam/authorization/authorize/batch') {
-            return $this->handleAuthorizeBatch($body ?? []);
+            return $this->handleAuthorizeBatch($body ?? [], $userId);
         }
 
         if ($method === 'POST' && $path === '/iam/authorization/authorize') {
-            return $this->handleAuthorize($body ?? []);
+            return $this->handleAuthorize($body ?? [], $userId);
         }
 
         // ── IAM control plane: scopes, roles, assignments ──────────────────
@@ -190,12 +190,15 @@ final class InMemoryBackend
     }
 
     /**
+     * The caller is the token-derived user (`$userId`), mirroring the real API —
+     * the SDK no longer forwards a `subjectId`.
+     *
      * @param  array<string,mixed>  $body
      * @return array{status:int, body:array<string,mixed>}
      */
-    private function handleAuthorize(array $body): array
+    private function handleAuthorize(array $body, ?string $userId): array
     {
-        $subjectId = (string) ($body['subjectId'] ?? '');
+        $subjectId = (string) ($userId ?? '');
         $scopeId = (string) ($body['scopeId'] ?? '');
         $required = (string) ($body['permission'] ?? '');
 
@@ -223,9 +226,9 @@ final class InMemoryBackend
      * @param  array<string,mixed>  $body
      * @return array{status:int, body:array<string,mixed>}
      */
-    private function handleAuthorizeBatch(array $body): array
+    private function handleAuthorizeBatch(array $body, ?string $userId): array
     {
-        $subjectId = (string) ($body['subjectId'] ?? '');
+        $subjectId = (string) ($userId ?? '');
         $scopeId = (string) ($body['scopeId'] ?? '');
         /** @var list<mixed> $permissions */
         $permissions = (array) ($body['permissions'] ?? []);

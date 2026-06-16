@@ -130,12 +130,16 @@ final class Can
      */
     private function authorizeRaw(): array
     {
-        $user = $this->requireUser();
+        $this->requireUser();
         $scopeId = $this->resolvedScopeId();
 
+        // Omit `subjectId`: the API authorizes the caller derived from the access
+        // token. The BFF holds the caller's token, not their Road user id —
+        // forwarding the Auth Server `sub` 403s every check, because IAM keys
+        // subjects by the Road profile id, not the `sub`. The token already
+        // identifies the caller. Mirrors @b1-road/nestjs.
         $body = $this->http->request('POST', '/iam/authorization/authorize', [
             'subjectType' => 'user',
-            'subjectId' => $user->id,
             'scopeId' => $scopeId,
             'permission' => $this->permission,
         ]);

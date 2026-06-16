@@ -12,6 +12,13 @@ contract from `alpha` to `v1` (see
 ## [Unreleased]
 
 ### Fixed
+- **`Road::can()` / `canMany()` no longer forward a `subjectId`** to
+  `/iam/authorization/authorize[/batch]`. The BFF holds the caller's access
+  token, not their Road user id; forwarding the Auth Server `sub` made the API
+  403 every check ("you may only query your own authorization") because IAM keys
+  subjects by the Road profile id, not the `sub`. The token already identifies
+  the caller — now matches `@b1-road/nestjs` (which fixed this as field-report
+  A1). Surfaced by the Beacon demo running against the live sandbox Auth Server.
 - **Proxy allowlist now covers the caller's own `me/*` endpoints**
   (`me/business-units`, `me/profile`, `me/permissions`). The default allowlist
   shipped only `organization/*` + `iam/*`, so `@b1-road/react` widgets running in

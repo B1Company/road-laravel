@@ -68,9 +68,11 @@ final class CanBatch
         // real API (mirrors Can + @b1-road/nestjs/react).
         $scopeId = $this->resolveScopeId($this->scopeId);
 
+        // Omit `subjectId` — the API authorizes the token-derived caller (IAM
+        // keys subjects by the Road profile id, not the Auth Server `sub`).
+        // Mirrors @b1-road/nestjs.
         $body = $this->http->request('POST', '/iam/authorization/authorize/batch', [
             'subjectType' => 'user',
-            'subjectId' => $user->id,
             'scopeId' => $scopeId,
             'permissions' => array_values($permissions),
         ]);
