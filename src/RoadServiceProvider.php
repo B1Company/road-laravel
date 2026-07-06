@@ -157,6 +157,10 @@ final class RoadServiceProvider extends ServiceProvider
 
         $config = $this->app->make(ConfigRepository::class);
 
+        // Fail loud at boot on a production misconfiguration that would otherwise
+        // 401/500 every request silently. No-op outside production.
+        BootGuards::assert($this->app, $config);
+
         if ($config->get('road.proxy.enabled', true)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/proxy.php');
         }
