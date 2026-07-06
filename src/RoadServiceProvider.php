@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel;
 
+use B1Road\Laravel\Auth\AuthServer\CacheTokenStore;
 use B1Road\Laravel\Auth\AuthServer\OidcDiscovery;
 use B1Road\Laravel\Auth\AuthServer\OidcProvider;
 use B1Road\Laravel\Auth\AuthServer\PkceFlow;
@@ -66,8 +67,19 @@ final class RoadServiceProvider extends ServiceProvider
             );
         });
 
-        // TokenStore (MVP: session-backed only).
+        // TokenStore — `session` (default) keeps the BFF tokens in the session
+        // payload; `cache` keeps them in a shared cache (Redis) keyed by session
+        // id, for horizontally-scaled / Octane BFFs.
         $this->app->scoped(TokenStore::class, function (Application $app): TokenStore {
+            $config = $app->make(ConfigRepository::class);
+            if ($config->get('road.token_store', 'session') === 'cache') {
+                return new CacheTokenStore(
+                    $app->make(CacheRepository::class),
+                    $app->make(Session::class),
+                    (int) $config->get('session.lifetime', 120) * 60,
+                );
+            }
+
             return new SessionTokenStore($app->make(Session::class));
         });
 

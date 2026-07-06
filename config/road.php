@@ -72,8 +72,14 @@ return [
     |--------------------------------------------------------------------------
     | Token Store
     |--------------------------------------------------------------------------
-    | Where the BFF caches Auth Server tokens between requests. MVP ships
-    | the `session` driver only; `cache` and `database` arrive in follow-ups.
+    | Where the BFF keeps Auth Server tokens between requests.
+    |
+    |   session — in the session payload (default; simplest, single-node).
+    |   cache   — in the cache store (Redis) keyed by session id, for
+    |             horizontally-scaled / Octane BFFs where every worker must read
+    |             the same tokens. TTL = the session lifetime.
+    |
+    | (`database` is not yet shipped — revisit when a consumer needs it.)
     */
 
     'token_store' => env('ROAD_TOKEN_STORE', 'session'),
