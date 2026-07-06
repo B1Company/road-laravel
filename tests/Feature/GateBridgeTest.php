@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use B1Road\Laravel\Auth\RoadUser;
 use B1Road\Laravel\Bridges\GateBridge;
+use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\Facades\Road;
 use B1Road\Laravel\Testing\ActsAsRoadUser;
 use B1Road\Laravel\Testing\RoadScenario;
@@ -30,7 +32,7 @@ function gateScenario(): RoadScenario
 }
 
 beforeEach(function () {
-    GateBridge::register(app(GateContract::class));
+    GateBridge::register(app(GateContract::class), app(RoadContext::class));
 });
 
 it('answers road:* Gate abilities through Road', function () {
@@ -69,6 +71,20 @@ it('defers a road: ability with no business-unit argument', function () {
 
     // No scope argument → the bridge can't resolve a BU, returns null → deny.
     expect(Gate::allows('road:read:Project'))->toBeFalse();
+});
+
+it('defers when asked about a different identity than the Road user (forUser)', function () {
+    Road::fake(gateScenario());
+    $this->actingAsRoadUser('u_admin'); // RoadContext user is u_admin (has manage:Project)
+
+    // Ask the gate about a DIFFERENT user. Road holds no token for them, so the
+    // bridge must defer (return null → deny) rather than answer u_admin's verdict
+    // under someone else's name.
+    $other = new RoadUser(id: 'u_someone_else', email: 'x@road.test', name: 'X');
+    expect(Gate::forUser($other)->allows('road:read:Project', 'bu_1'))->toBeFalse();
+
+    // Sanity: the same ability for the actual Road user still resolves true.
+    expect(Gate::allows('road:read:Project', 'bu_1'))->toBeTrue();
 });
 
 it('is wired by the provider when road.bridges.gate is enabled', function () {

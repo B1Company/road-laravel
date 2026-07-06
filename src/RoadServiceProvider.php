@@ -186,7 +186,10 @@ final class RoadServiceProvider extends ServiceProvider
         }
 
         if ($config->get('road.bridges.gate', false)) {
-            GateBridge::register($this->app->make(GateContract::class));
+            GateBridge::register(
+                $this->app->make(GateContract::class),
+                $this->app->make(RoadContext::class),
+            );
         }
 
         if ($this->app->runningInConsole()) {
