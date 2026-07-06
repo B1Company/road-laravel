@@ -54,4 +54,31 @@ class RoadClient
     {
         return $this->invitations ??= new Invitations($this->http);
     }
+
+    /**
+     * Raw request escape hatch — call any Road endpoint the typed surface
+     * doesn't model yet. Returns the decoded JSON body (the `{ data }` envelope
+     * is not unwrapped; read `$body['data']` yourself). Errors still map to the
+     * typed RoadException hierarchy.
+     *
+     *   $body = Road::client()->request('GET', '/some/new/endpoint');
+     *
+     * @param  array<string,mixed>|null  $body
+     * @param  array<string,mixed>|null  $query
+     * @return array<string,mixed>
+     */
+    public function request(string $method, string $path, ?array $body = null, ?array $query = null): array
+    {
+        return $this->http->request($method, $path, $body, $query);
+    }
+
+    /**
+     * The underlying HTTP transport, for callers who need lower-level control
+     * (custom retry/telemetry inspection). Prefer {@see request()} for one-off
+     * calls to unmodelled endpoints.
+     */
+    public function transport(): HttpTransportInterface
+    {
+        return $this->http;
+    }
 }

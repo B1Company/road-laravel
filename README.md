@@ -374,6 +374,22 @@ transparently on a 401. `asService()` uses a dedicated context, so a request
 handler can call `Road::user()` *and* dispatch a job with `Road::asService()`
 without cross-contamination.
 
+## Escape hatches
+
+When the typed surface doesn't cover something, drop a level — you never have to
+leave the SDK:
+
+```php
+// Raw call to an endpoint the client doesn't model yet. Returns the decoded
+// body ({ data } not unwrapped); errors still map to RoadException.
+$body = Road::client()->request('GET', '/some/new/endpoint', query: ['limit' => 10]);
+Road::client()->transport();     // the underlying HTTP transport, for full control
+
+// Act as a user whose access token you already hold (outside the request
+// session) — mirrors Road::asService() but for a user principal.
+Road::asUser($accessToken)->client()->me()->get();
+```
+
 ## Webhooks
 
 Opt in with `ROAD_WEBHOOKS_ENABLED=true` and set `ROAD_WEBHOOK_SECRET`. The SDK

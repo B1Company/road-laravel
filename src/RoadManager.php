@@ -129,6 +129,34 @@ final class RoadManager
         return new self($this->container, $serviceContext, new RoadClient($transport), $transport);
     }
 
+    /**
+     * Return a manager whose client authenticates as the user identified by a
+     * token you already hold — for the rare case where you have an Auth Server
+     * access token outside the request session (a background task acting on a
+     * specific user's behalf, a test harness). Mirrors `road.as.user(token)` in
+     * `@b1-road/nestjs`.
+     *
+     *   Road::asUser($accessToken)->client()->me()->get();
+     */
+    public function asUser(string $token): self
+    {
+        /** @var ConfigRepository $config */
+        $config = $this->container->make(ConfigRepository::class);
+
+        $userContext = new RoadContext;
+        $userContext->setToken($token);
+        $userContext->setRequestId($this->context->requestId());
+
+        $transport = new HttpTransport(
+            $this->container->make(HttpFactory::class),
+            $userContext,
+            $config,
+            $this->container->make(RoadTelemetry::class),
+        );
+
+        return new self($this->container, $userContext, new RoadClient($transport), $transport);
+    }
+
     // -- Authorization -----------------------------------------------------
 
     /**
