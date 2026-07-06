@@ -84,3 +84,35 @@ it('accepts the shared golden signature vector (cross-SDK contract)', function (
     // A single tampered byte in the signed body fails.
     expect($verifier->verify($vector['rawBody'].' ', $vector['signatureHeader'], (string) $vector['timestamp']))->toBeFalse();
 });
+
+it('reproduces the @b1-road/types WEBHOOK_SIGNING_VECTOR (C6 — same vector as nestjs + the API)', function () {
+    // The exact const exported from @b1-road/types `webhook-signing.ts`. The
+    // NestJS producer spec and every SDK verifier assert against THIS vector, so
+    // pinning it here proves the Laravel verifier is in lockstep — a drift in the
+    // signing scheme fails all of them at once rather than silently 401'ing real
+    // deliveries. Kept in sync by hand (there is no TS→PHP import); if
+    // @b1-road/types changes the vector, update these literals to match.
+    $secret = 'whsec_road-signing-vector';
+    $timestamp = '1700000000';
+    $rawBody = '{"id":"whd_0000000000000000","event":"organization.member.joined","timestamp":"2023-11-14T22:13:20.000Z","data":{"businessUnitId":"bu_são_paulo","memberId":"mem_0000000000000000","userId":"usr_0000000000000000"}}';
+    $signature = 'edd12b6dcb8b24d7c48f65c687f02ad0f173080eeaee4fac070919e8c22d4c6f';
+
+    // The verifier recomputes the HMAC; matching the committed signature proves
+    // the scheme (message = "{timestamp}.{rawBody}", HMAC-SHA256, lowercase hex).
+    expect(hash_hmac('sha256', $timestamp.'.'.$rawBody, $secret))->toBe($signature);
+
+    $verifier = new WebhookSignatureVerifier($secret, toleranceSeconds: 10_000_000_000);
+    expect($verifier->verify($rawBody, 'sha256='.$signature, $timestamp))->toBeTrue();
+    expect($verifier->verify($rawBody, $signature, $timestamp))->toBeTrue(); // bare hex too
+});
+
+it('rejects a non-hex signature before the constant-time compare (C6)', function () {
+    $verifier = new WebhookSignatureVerifier(WH_SECRET, toleranceSeconds: 10_000_000_000);
+    $body = '{"a":1}';
+    $ts = (string) time();
+
+    // 64 chars but not lowercase-hex (contains 'Z'/multi-byte) → rejected outright.
+    expect($verifier->verify($body, 'sha256='.str_repeat('Z', 64), $ts))->toBeFalse();
+    // Right length hex-ish but wrong content still fails (no accidental accept).
+    expect($verifier->verify($body, 'sha256='.str_repeat('a', 63).'x', $ts))->toBeFalse();
+});

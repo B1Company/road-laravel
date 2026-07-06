@@ -45,6 +45,15 @@ final class WebhookSignatureVerifier
             ? substr($signatureHeader, 7)
             : $signatureHeader;
 
+        // The HMAC-SHA256 digest is always 64 lowercase-hex chars. Reject
+        // anything else *before* comparing — a non-hex header (e.g. one that is
+        // the same length but multi-byte) would otherwise make the two strings
+        // differ in byte length and defeat the constant-time compare. Mirrors
+        // the same guard in @b1-road/nestjs.
+        if (preg_match('/^[0-9a-f]{64}$/', $provided) !== 1) {
+            return false;
+        }
+
         $expected = hash_hmac('sha256', $timestampHeader.'.'.$rawBody, $this->secret);
 
         return hash_equals($expected, $provided);
