@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 use B1Road\Laravel\Client\Resources\RoleWire;
 use B1Road\Laravel\DTO\BusinessUnitDetail;
+use B1Road\Laravel\DTO\MyBusinessUnits;
 use B1Road\Laravel\DTO\Pagination;
+use B1Road\Laravel\DTO\PlatformSubscriptionResolution;
 use B1Road\Laravel\DTO\Role;
+use B1Road\Laravel\Webhooks\RoadEventMap;
 
 /**
  * Replays the recorded cross-SDK contract fixtures through the Laravel DTOs.
@@ -58,6 +61,30 @@ it('decodes every recorded contract fixture through the matching DTO', function 
             // The pagination envelope decodes too.
             $pagination = Pagination::fromWire($fixture['body']['pagination'] ?? null, count($roles));
             expect($pagination->hasMore)->toBeTrue();
+        })(),
+        'myBusinessUnits' => (function () use ($data) {
+            // The membership list carries the new `platformSubscriptions` array;
+            // spatie ignores properties the DTO doesn't yet surface, so this
+            // decodes today — exposing those fields is Phase 1 (C1).
+            $mine = MyBusinessUnits::from($data);
+            expect($mine)->toBeInstanceOf(MyBusinessUnits::class);
+            expect($mine->memberships)->toHaveCount(count($data['memberships']));
+        })(),
+        'platformSubscriptionResolution' => (function () use ($data) {
+            $resolution = PlatformSubscriptionResolution::from($data);
+            expect($resolution->subscriptionId)->toBe($data['subscriptionId']);
+            expect($resolution->scopeId)->toBe($data['scopeId']);
+        })(),
+        'webhookDelivery' => (function () use ($fixture) {
+            // A delivery envelope `{ id, event, timestamp, data }` — decode its
+            // payload through the same DTO the receiver dispatches, so the
+            // recorded wire and the typed event stay in lockstep.
+            $event = $fixture['body']['event'];
+            $mapping = RoadEventMap::for($event);
+            expect($mapping)->not->toBeNull("no RoadEventMap entry for {$event}");
+            [, $payloadClass] = $mapping;
+            $payload = $payloadClass::from($fixture['body']['data']);
+            expect($payload)->toBeInstanceOf($payloadClass);
         })(),
         default => throw new RuntimeException("Unhandled contract fixture kind in {$file}"),
     };
