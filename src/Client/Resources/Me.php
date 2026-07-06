@@ -44,6 +44,16 @@ final class Me
         ]);
     }
 
+    /**
+     * The signed-in user's Eduzz products. Iterable (auto-paginating) with a
+     * `firstPage()` escape hatch. Road calls Eduzz with the user's server-held
+     * token; the caller never sees it.
+     */
+    public function eduzzProducts(): EduzzProductCollection
+    {
+        return new EduzzProductCollection($this->http);
+    }
+
     public function permissions(): MyPermissions
     {
         // Road exposes effective permissions per IAM **scope** (not per BU)

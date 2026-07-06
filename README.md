@@ -149,6 +149,14 @@ foreach (Road::client()->me()->businessUnits()->memberships as $m) {
 $sub = Road::client()->businessUnits($buId)->subscriptions('plat_payment_gw');
 Road::can('read', 'Invoice')->in($sub->scopeId); // check a platform-scoped permission
 
+// The signed-in user's Eduzz products — Road calls Eduzz with the user's
+// server-held token; iteration auto-paginates.
+foreach (Road::client()->me()->eduzzProducts() as $product) {
+    // $product->name, $product->payment->price['value'], …
+}
+// A 403 carrying EDUZZ_REAUTH_REQUIRED means the user must reconnect Eduzz;
+// the code rides in the RoadAuthzException message + payload.
+
 // IAM control plane
 Road::client()->iam()->authorize([...]);
 Road::client()->iam()->scope($scopeId)->roles()->all();

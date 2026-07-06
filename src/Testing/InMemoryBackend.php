@@ -56,6 +56,15 @@ final class InMemoryBackend
             ]];
         }
 
+        if ($method === 'GET' && $path === '/me/eduzz/products') {
+            // The scenario has no Eduzz-product concept; return an empty page so
+            // `Road::fake()` users can call eduzzProducts() without a live token.
+            return ['status' => 200, 'body' => [
+                'data' => [],
+                'pagination' => ['cursor' => null, 'hasMore' => false, 'totalCount' => 0],
+            ]];
+        }
+
         if ($method === 'GET' && $path === '/iam/authorization/me/permissions') {
             return $this->handleMyPermissions($query ?? [], $userId);
         }
