@@ -46,6 +46,44 @@ contract from `alpha` to `v1` (see
   from the API's public Swagger doc) and generated the typed input DTOs into
   `src/DTO/Generated/`. `road:generate-dtos --check` now runs as a test, so the
   SDK's view of the API input contract can't drift silently.
+- **Platform-scope model.** New `PlatformRef`, `ScopedRoleRef`, and
+  `PlatformSubscriptionRef` DTOs; `Membership` now carries `platformSubscriptions`
+  (the wire always sends it). Mirrors `@b1-road/types`.
+- **Member role assignment.** `members()->assignRole($memberId, $roleId)` /
+  `revokeRole(...)` on the client, matching `@b1-road/nestjs`.
+- **Invitation `platformRoleIds`.** The invitation-create input forwards the
+  optional `platformRoleIds` (grant platform-subscription roles on acceptance).
+- **Platform-subscription resolver.** `businessUnits($buId)->subscriptions($platformPublicId)`
+  → `PlatformSubscriptionResolution` (turns a platform public id into its IAM
+  scope id).
+- **Eduzz products.** `me()->eduzzProducts()` — an auto-paginating collection of
+  `EduzzProduct` with a `firstPage()` hatch; the `EDUZZ_*` error codes ride the
+  thrown exception's 7807 `detail`.
+- **`me()->memberships()` and `me()->platformRoles($platformId, $buId)`** for
+  full `me` parity with the NestJS SDK.
+- **Gate bridge (opt-in).** `road.bridges.gate` routes `road:{action}:{Subject}`
+  abilities through Road, so `Gate::allows`, `$user->can`, and Blade `@can`
+  answer via Road.
+- **Boot-time production guards.** In production, provider boot throws on a
+  scheme-less `ROAD_API_BASE_URL`, missing OIDC credentials, a non-persistent
+  session driver, or webhooks enabled without a secret. No-op outside production.
+- **`cache` token-store driver.** `road.token_store = cache` keeps BFF tokens in
+  the cache (Redis) keyed by session id (TTL = session lifetime) instead of the
+  session payload, for horizontally-scaled / Octane BFFs.
+- **Escape hatches.** `Road::client()->request(...)` (raw call to an unmodelled
+  endpoint) + `transport()`, and `Road::asUser($token)` (act as a user whose
+  token you already hold).
+- **Interactive `road:install`.** Prompts for the four uninferrable env values,
+  derives the redirect URI from `APP_URL`, and offers to run `road:doctor`.
+  `--no-interaction` preserves the stub-append behavior.
+
+### Security
+- **The 403 decision trace no longer leaks by default.** The `DecisionTrace`
+  (including the grants the caller *holds*) is attached to a 403 body only when
+  the caller sends `X-Road-Debug: 1` (or `?debug=road`) **and** the debug header
+  is enabled (auto-on outside production). Previously it rode every 403 in all
+  environments. The message still names the *required* permission (intended DX,
+  parity with `@b1-road/nestjs`).
 
 ## [0.1.0-alpha] — 2026-06-11
 
