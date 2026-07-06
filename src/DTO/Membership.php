@@ -12,6 +12,7 @@ final class Membership extends Data
 {
     /**
      * @param  DataCollection<int, RoleRef>  $roles
+     * @param  DataCollection<int, PlatformSubscriptionRef>  $platformSubscriptions
      */
     public function __construct(
         public BusinessUnitSummary $businessUnit,
@@ -19,5 +20,7 @@ final class Membership extends Data
         public string $joinedAt,
         #[DataCollectionOf(RoleRef::class)]
         public DataCollection $roles,
+        #[DataCollectionOf(PlatformSubscriptionRef::class)]
+        public DataCollection $platformSubscriptions,
     ) {}
 }

@@ -63,12 +63,22 @@ it('decodes every recorded contract fixture through the matching DTO', function 
             expect($pagination->hasMore)->toBeTrue();
         })(),
         'myBusinessUnits' => (function () use ($data) {
-            // The membership list carries the new `platformSubscriptions` array;
-            // spatie ignores properties the DTO doesn't yet surface, so this
-            // decodes today — exposing those fields is Phase 1 (C1).
             $mine = MyBusinessUnits::from($data);
             expect($mine)->toBeInstanceOf(MyBusinessUnits::class);
             expect($mine->memberships)->toHaveCount(count($data['memberships']));
+
+            // Assert *through* to the platform-scope fields (C1) — spatie drops
+            // unknown properties silently, so a shallow decode would pass whether
+            // or not `platformSubscriptions` is wired. Read the actual values.
+            $membership = $mine->memberships->first();
+            $wireMembership = $data['memberships'][0];
+            expect($membership->roles->first()->name)->toBe($wireMembership['roles'][0]['name']);
+            expect($membership->platformSubscriptions)->toHaveCount(count($wireMembership['platformSubscriptions']));
+            $sub = $membership->platformSubscriptions->first();
+            $wireSub = $wireMembership['platformSubscriptions'][0];
+            expect($sub->platformId)->toBe($wireSub['platformId']);
+            expect($sub->scopeId)->toBe($wireSub['scopeId']);
+            expect($sub->slug)->toBe($wireSub['slug']);
         })(),
         'platformSubscriptionResolution' => (function () use ($data) {
             $resolution = PlatformSubscriptionResolution::from($data);

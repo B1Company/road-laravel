@@ -21,7 +21,7 @@ final class RoadScenario
     /** @var array<string, array{id:string, name:string, slug:string, status:string, memberCount:int, memberLimit:?int, joinCode:?string, createdAt:string, iamScopeId:string}> */
     public array $businessUnits = [];
 
-    /** @var array<string, array{userId:string, memberships:list<array{businessUnit:array{id:string,name:string,slug:string}, status:string, joinedAt:string, roles:list<array{id:string,name:string}>}>}> */
+    /** @var array<string, array{userId:string, memberships:list<array{businessUnit:array{id:string,name:string,slug:string}, status:string, joinedAt:string, roles:list<array{id:string,name:string}>, platformSubscriptions:list<array{platformId:string,slug:string,scopeId:string,roles:list<array{id:string,name:string}>}>}>}> */
     public array $userBusinessUnits = [];
 
     /**
@@ -129,6 +129,10 @@ final class RoadScenario
                 fn (string $r): array => ['id' => 'r_'.$r, 'name' => $r],
                 $roles,
             ),
+            // The real /me/business-units wire always includes this array (empty
+            // when the BU has no platform subscriptions). Emitting it keeps the
+            // fake faithful to the Membership DTO's required field.
+            'platformSubscriptions' => [],
         ];
 
         $this->businessUnits[$buId]['memberCount']++;

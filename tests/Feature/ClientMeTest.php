@@ -61,6 +61,7 @@ it('decodes /me/business-units into MyBusinessUnits', function () {
                         'status' => 'active',
                         'joinedAt' => '2024-01-01T00:00:00Z',
                         'roles' => [['id' => 'r_1', 'name' => 'Owner']],
+                        'platformSubscriptions' => [],
                     ],
                 ],
                 'pendingInvitations' => [],
@@ -126,7 +127,7 @@ it('permissions() resolves BU->scope, calls the scoped endpoint, and keys by BU 
         'api.road.test/api/alpha/me/business-units' => Http::response([
             'data' => [
                 'memberships' => [
-                    ['businessUnit' => ['id' => 'bu_1', 'name' => 'B1', 'slug' => 'b1'], 'status' => 'active', 'joinedAt' => '', 'roles' => []],
+                    ['businessUnit' => ['id' => 'bu_1', 'name' => 'B1', 'slug' => 'b1'], 'status' => 'active', 'joinedAt' => '', 'roles' => [], 'platformSubscriptions' => []],
                 ],
                 'pendingInvitations' => [],
             ],
