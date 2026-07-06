@@ -94,6 +94,7 @@ final class InstallCommand extends Command
             ),
             'AUTH_SERVER_CLIENT_SECRET' => password(
                 label: 'Auth Server client secret',
+                required: true,
                 hint: 'Shown once in the portal; pasted here, never echoed.',
             ),
         ];
@@ -136,7 +137,10 @@ final class InstallCommand extends Command
             $line = sprintf('%s=%s', $key, $this->quoteIfNeeded($value));
             $pattern = '/^'.preg_quote($key, '/').'=.*$/m';
             if (preg_match($pattern, $contents) === 1) {
-                $contents = (string) preg_replace($pattern, $line, $contents);
+                // Use a callback replacement — a plain preg_replace would treat
+                // `$`/`\` in the value (secrets often have them) as backreferences
+                // and mangle it. The callback returns the literal line verbatim.
+                $contents = (string) preg_replace_callback($pattern, static fn (): string => $line, $contents);
             } else {
                 $appended[] = $line;
             }

@@ -60,3 +60,23 @@ it('the interactive wizard writes the answered values + derives the redirect URI
     // The redirect URI is derived from APP_URL, not asked.
     expect($env)->toContain('AUTH_SERVER_REDIRECT_URI=https://my-app.test/auth/road/callback');
 });
+
+it('writes a secret containing $ and \\ verbatim (no preg backreference mangling)', function () {
+    // An existing key whose new value has regex-replacement metacharacters.
+    File::put(base_path('.env'), "APP_NAME=Test\nAUTH_SERVER_CLIENT_SECRET=old\n");
+    config(['app.url' => 'https://my-app.test']);
+
+    $trickySecret = 'a$1b\2c$0d';
+
+    $this->artisan('road:install')
+        ->expectsQuestion('Road API base URL', 'https://api.road.b1.app')
+        ->expectsQuestion('Auth Server issuer URL', 'https://issuer.test')
+        ->expectsQuestion('Auth Server client ID', 'cid')
+        ->expectsQuestion('Auth Server client secret', $trickySecret)
+        ->expectsConfirmation('Run `road:doctor` now to verify the wiring?', 'no')
+        ->assertExitCode(0);
+
+    // The value survives byte-for-byte — a plain preg_replace would have turned
+    // $1/\2/$0 into (empty) backreferences and corrupted the secret.
+    expect(File::get(base_path('.env')))->toContain('AUTH_SERVER_CLIENT_SECRET='.$trickySecret);
+});
