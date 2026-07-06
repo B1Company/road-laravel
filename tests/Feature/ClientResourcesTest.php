@@ -161,6 +161,24 @@ it('lists, creates and cancels invitations on a BU', function () {
     expect($cancelled->status)->toBe('cancelled');
 });
 
+it('forwards platformRoleIds on invitation create (C3)', function () {
+    Http::fake([
+        'api.road.test/api/alpha/organization/business-units/bu_1/invitations' => Http::response(
+            ['data' => invitationWire('inv_9')],
+            201,
+        ),
+    ]);
+
+    seedRoadClient()->businessUnits('bu_1')->invitations()->create([
+        'email' => 'new@test.local',
+        'roleId' => 'r_1',
+        'platformRoleIds' => ['pr_a', 'pr_b'],
+    ]);
+
+    Http::assertSent(fn (HttpRequest $req) => $req->method() === 'POST'
+        && $req->data()['platformRoleIds'] === ['pr_a', 'pr_b']);
+});
+
 it('accepts and rejects invitations by id at the top level', function () {
     Http::fake([
         'api.road.test/api/alpha/organization/invitations/inv_1/accept' => Http::response(['data' => invitationWire('inv_1', 'accepted')]),

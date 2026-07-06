@@ -131,9 +131,20 @@ Road::client()->businessUnits()->get($buId, include: ['members', 'roles']);
 // Members / Roles / Invitations hang off the BU and act on themselves
 foreach (Road::client()->businessUnits($buId)->members() as $member) { /* … */ }
 Road::client()->businessUnits($buId)->members()->suspend($memberId);
+Road::client()->businessUnits($buId)->members()->assignRole($memberId, $roleId); // BU or platform role
+Road::client()->businessUnits($buId)->members()->revokeRole($memberId, $roleId);
 Road::client()->businessUnits($buId)->roles()->create(['name' => 'Editor', 'permissions' => ['read:Member']]);
-Road::client()->businessUnits($buId)->invitations()->create(['email' => 'x@b1.app', 'roleId' => $roleId]);
+Road::client()->businessUnits($buId)->invitations()->create([
+    'email' => 'x@b1.app',
+    'roleId' => $roleId,
+    'platformRoleIds' => [$platformRoleId], // optional — grant platform-subscription roles on acceptance
+]);
 Road::client()->invitations()->accept($invitationId);
+
+// A membership carries the platforms its BU subscribes to
+foreach (Road::client()->me()->businessUnits()->memberships as $m) {
+    foreach ($m->platformSubscriptions as $sub) { /* $sub->platformId, $sub->scopeId */ }
+}
 
 // IAM control plane
 Road::client()->iam()->authorize([...]);
