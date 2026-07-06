@@ -153,6 +153,15 @@ final class InMemoryBackend
             return ['status' => 200, 'body' => ['data' => []]];
         }
 
+        if ($method === 'GET' && preg_match('#^/organization/business-units/([^/]+)/subscriptions/([^/]+)$#', $path, $m) === 1) {
+            return ['status' => 200, 'body' => ['data' => [
+                'subscriptionId' => 'sub_'.$m[2],
+                'platformId' => $m[2],
+                'slug' => $m[2],
+                'scopeId' => 'scope_'.$m[2],
+            ]]];
+        }
+
         if ($method === 'GET' && preg_match('#^/organization/business-units/([^/]+)/members/([^/]+)$#', $path, $m) === 1) {
             foreach ($this->membersForBu($m[1]) as $member) {
                 if ($member['id'] === $m[2]) {

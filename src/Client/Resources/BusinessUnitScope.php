@@ -6,6 +6,7 @@ namespace B1Road\Laravel\Client\Resources;
 
 use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\DTO\BusinessUnitDetail;
+use B1Road\Laravel\DTO\PlatformSubscriptionResolution;
 
 /**
  * Lightweight "navigator" returned by `Road::client()->businessUnits($buId)`.
@@ -44,5 +45,23 @@ final class BusinessUnitScope
     public function invitations(): InvitationCollection
     {
         return new InvitationCollection($this->http, $this->buId);
+    }
+
+    /**
+     * Resolve this BU's subscription to a platform by the platform's public id.
+     *
+     *   $sub = Road::client()->businessUnits($buId)->subscriptions('plat_payment_gw');
+     *   $sub->scopeId; // the IAM scope id for permission checks on that platform
+     */
+    public function subscriptions(string $platformPublicId): PlatformSubscriptionResolution
+    {
+        $body = $this->http->request(
+            'GET',
+            '/organization/business-units/'.rawurlencode($this->buId)
+                .'/subscriptions/'.rawurlencode($platformPublicId),
+        );
+        $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
+
+        return PlatformSubscriptionResolution::from($data);
     }
 }

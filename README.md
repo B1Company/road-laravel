@@ -145,6 +145,9 @@ Road::client()->invitations()->accept($invitationId);
 foreach (Road::client()->me()->businessUnits()->memberships as $m) {
     foreach ($m->platformSubscriptions as $sub) { /* $sub->platformId, $sub->scopeId */ }
 }
+// …or resolve one subscription directly by the platform's public id
+$sub = Road::client()->businessUnits($buId)->subscriptions('plat_payment_gw');
+Road::can('read', 'Invoice')->in($sub->scopeId); // check a platform-scoped permission
 
 // IAM control plane
 Road::client()->iam()->authorize([...]);

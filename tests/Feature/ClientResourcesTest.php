@@ -10,6 +10,7 @@ use B1Road\Laravel\DTO\AuthorizeResult;
 use B1Road\Laravel\DTO\BusinessUnitWithIncludes;
 use B1Road\Laravel\DTO\Invitation;
 use B1Road\Laravel\DTO\Member;
+use B1Road\Laravel\DTO\PlatformSubscriptionResolution;
 use B1Road\Laravel\DTO\Role;
 use B1Road\Laravel\DTO\Scope;
 use Illuminate\Http\Client\Request as HttpRequest;
@@ -89,6 +90,27 @@ it('acts on a member through the collection', function () {
 
     Http::assertSent(fn (HttpRequest $req) => $req->method() === 'POST'
         && str_ends_with($req->url(), '/organization/business-units/bu_1/members/m1/suspend'));
+});
+
+it('resolves a platform subscription by public id (C4)', function () {
+    Http::fake([
+        'api.road.test/api/alpha/organization/business-units/bu_1/subscriptions/plat_gw' => Http::response([
+            'data' => [
+                'subscriptionId' => 'sub_1',
+                'platformId' => 'plat_gw',
+                'slug' => 'payment-gateway',
+                'scopeId' => 'scope_plat_1',
+            ],
+        ], 200),
+    ]);
+
+    $sub = seedRoadClient()->businessUnits('bu_1')->subscriptions('plat_gw');
+
+    expect($sub)->toBeInstanceOf(PlatformSubscriptionResolution::class);
+    expect($sub->subscriptionId)->toBe('sub_1');
+    expect($sub->scopeId)->toBe('scope_plat_1');
+    Http::assertSent(fn (HttpRequest $req) => $req->method() === 'GET'
+        && str_ends_with($req->url(), '/organization/business-units/bu_1/subscriptions/plat_gw'));
 });
 
 it('assigns a role to a member by role id', function () {
