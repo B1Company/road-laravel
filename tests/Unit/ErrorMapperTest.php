@@ -125,7 +125,8 @@ it('extracts the DecisionTrace from a 403 body', function () {
     /** @var RoadAuthzException $error */
     expect($error->trace)->not->toBeNull();
     expect($error->trace->verdict)->toBe('deny');
-    expect($error->getMessage())->toContain('read:Member');
+    // The grants the user holds live on the structured trace, not the message.
+    expect($error->trace->format())->toContain('read:Member');
 });
 
 it('maps status 0 to a network error and an unmapped status to the catch-all', function () {

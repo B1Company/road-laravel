@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace B1Road\Laravel\Http\Middleware;
 
 use B1Road\Laravel\Context\RoadContext;
+use B1Road\Laravel\Exceptions\RoadAuthzException;
 use B1Road\Laravel\Exceptions\RoadException;
 use Closure;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -42,7 +44,10 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class HandleRoadExceptions
 {
-    public function __construct(private readonly RoadContext $context) {}
+    public function __construct(
+        private readonly RoadContext $context,
+        private readonly ConfigRepository $config,
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -63,18 +68,41 @@ final class HandleRoadExceptions
     public function render(Request $request, RoadException $e): Response
     {
         return $this->wantsJson($request)
-            ? $this->jsonResponse($e)
+            ? $this->jsonResponse($request, $e)
             : $this->htmlRedirect($request, $e);
     }
 
-    private function jsonResponse(RoadException $e): JsonResponse
+    private function jsonResponse(Request $request, RoadException $e): JsonResponse
     {
         $body = $e->toErrorBody();
         if (! isset($body['requestId'])) {
             $body['requestId'] = $this->context->requestId();
         }
 
+        // Attach the authorization decision trace to a 403 ONLY when the caller
+        // asked for it (`X-Road-Debug: 1` or `?debug=road`) AND the debug header
+        // is enabled (auto-on outside production, off in prod, config kill
+        // switch). A production 403 must never leak the caller's grants. Same
+        // trigger + shape as @b1-road/nestjs's RoadDebugFilter.
+        if ($e instanceof RoadAuthzException && $this->debugRequested($request) && $this->debugEnabled()) {
+            $decision = $e->decision();
+            if ($decision !== null) {
+                $body['decision'] = $decision;
+            }
+        }
+
         return new JsonResponse(['error' => $body], $e->httpStatus());
+    }
+
+    private function debugRequested(Request $request): bool
+    {
+        return $request->header('X-Road-Debug') === '1'
+            || $request->query('debug') === 'road';
+    }
+
+    private function debugEnabled(): bool
+    {
+        return (bool) $this->config->get('road.debug.header_enabled', false);
     }
 
     private function htmlRedirect(Request $request, RoadException $e): Response

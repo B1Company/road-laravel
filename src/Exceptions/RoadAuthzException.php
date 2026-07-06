@@ -8,12 +8,16 @@ use B1Road\Laravel\Authorization\DecisionTrace;
 use Throwable;
 
 /**
- * 403 — the calling subject lacks the required permissions. Carries
- * the structured `DecisionTrace` from Road so support tickets can
- * be diffed across SDKs.
+ * 403 — the calling subject lacks the required permissions. Carries the
+ * structured `DecisionTrace` from Road so support tickets can be diffed across
+ * SDKs.
  *
- * The exception's message includes the rendered trace (multi-line)
- * when one is present — Stripe-grade error readability.
+ * The **message stays plain** ("Permission denied.") so it is safe to render on
+ * the wire in any environment. The trace is exposed only via {@see decision()},
+ * which the error renderer attaches to a 403 body only behind the debug trigger
+ * in non-prod — a production 403 must never leak the caller's grants. Read the
+ * rendered multi-line trace off `$e->trace->format()` in a log/breakpoint when
+ * you want the human-readable form.
  */
 final class RoadAuthzException extends RoadException
 {
@@ -27,11 +31,7 @@ final class RoadAuthzException extends RoadException
         array $payload = [],
         ?Throwable $previous = null,
     ) {
-        $rendered = $trace !== null
-            ? rtrim($message, '.').":\n".$trace->format()
-            : $message;
-
-        parent::__construct($rendered, $errorCode, $requestId, $docsUrl, $payload, $previous);
+        parent::__construct($message, $errorCode, $requestId, $docsUrl, $payload, $previous);
     }
 
     public function httpStatus(): int
@@ -39,14 +39,17 @@ final class RoadAuthzException extends RoadException
         return 403;
     }
 
-    /** @return array<string,mixed> */
-    public function toErrorBody(): array
+    /**
+     * The structured decision as a wire array, or null. Exposed for the error
+     * renderer to attach **only** when the debug trigger fires in a non-prod
+     * environment — it is NOT in the default {@see toErrorBody()} so a
+     * production 403 never leaks the caller's grants. Mirrors @b1-road/nestjs's
+     * RoadDebugFilter, which gates the trace the same way.
+     *
+     * @return array<string,mixed>|null
+     */
+    public function decision(): ?array
     {
-        $body = parent::toErrorBody();
-        if ($this->trace !== null) {
-            $body['decision'] = $this->trace->toArray();
-        }
-
-        return $body;
+        return $this->trace?->toArray();
     }
 }

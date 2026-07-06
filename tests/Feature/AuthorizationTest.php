@@ -56,11 +56,16 @@ it('Road::assert() throws RoadAuthzException with a trace on deny', function () 
     } catch (RoadAuthzException $e) {
         expect($e->httpStatus())->toBe(403);
         expect($e->errorCode())->toBe('permission_denied');
+        // The message names the *required* permission (intended DX, parity with
+        // @b1-road/nestjs), but the grants the user *holds* live only on the
+        // structured trace — never rendered into the always-on message.
         expect($e->trace)->toBeInstanceOf(DecisionTrace::class);
         expect($e->trace->verdict)->toBe('deny');
-        // Rendered message includes the multi-line trace (Stripe-grade)
-        expect($e->getMessage())->toContain('Required:   read:Member');
-        expect($e->getMessage())->toContain('Subject:    user:u_guest');
+        expect($e->getMessage())->toContain('read:Member');       // required — fine
+        expect($e->getMessage())->not->toContain('Grants:');       // held-grant block — must not leak
+        // The full trace (grants held, scope, evaluated scopes) is reachable for
+        // logs/support via the structured form.
+        expect($e->trace->format())->toContain('Required:   read:Member');
     }
 });
 
@@ -109,10 +114,47 @@ it('the road.permission middleware 403s with permission_denied when the role lac
     Route::middleware(['road.errors', 'road', 'road.permission:read,Member,buId'])
         ->get('/bus/{buId}/members', fn () => ['ok' => true]);
 
+    // No debug header → the decision trace is NOT leaked (prod-safe by default).
     $this->getJson('/bus/bu_1/members')
         ->assertForbidden()
         ->assertJsonPath('error.code', 'permission_denied')
+        ->assertJsonMissingPath('error.decision');
+});
+
+it('surfaces the decision trace on a 403 only with the debug header (P5)', function () {
+    Road::fake(scenarioWithReader());
+    $this->actingAsRoadUser('u_guest');
+
+    Route::middleware(['road.errors', 'road', 'road.permission:read,Member,buId'])
+        ->get('/bus/{buId}/members-dbg', fn () => ['ok' => true]);
+
+    // With `X-Road-Debug: 1` and the header enabled (auto-on in non-prod, which
+    // the test env is), the full DecisionTrace rides the 403 body.
+    $this->getJson('/bus/bu_1/members-dbg', ['X-Road-Debug' => '1'])
+        ->assertForbidden()
+        ->assertJsonPath('error.code', 'permission_denied')
         ->assertJsonPath('error.decision.verdict', 'deny');
+
+    // `?debug=road` is the equivalent query trigger.
+    $this->getJson('/bus/bu_1/members-dbg?debug=road')
+        ->assertForbidden()
+        ->assertJsonPath('error.decision.verdict', 'deny');
+});
+
+it('never leaks the decision trace when the debug header is disabled (prod)', function () {
+    config(['road.debug.header_enabled' => false]); // simulate production
+    Road::fake(scenarioWithReader());
+    $this->actingAsRoadUser('u_guest');
+
+    Route::middleware(['road.errors', 'road', 'road.permission:read,Member,buId'])
+        ->get('/bus/{buId}/members-prod', fn () => ['ok' => true]);
+
+    // Even WITH the header, a disabled debug surface (prod) never attaches the
+    // decision trace — the grants the user holds stay off the wire. (The message
+    // may still name the *required* permission; that's intended, not a leak.)
+    $this->getJson('/bus/bu_1/members-prod', ['X-Road-Debug' => '1'])
+        ->assertForbidden()
+        ->assertJsonMissingPath('error.decision');
 });
 
 class AuthzTestMembersController extends Controller
