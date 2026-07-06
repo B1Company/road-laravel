@@ -47,6 +47,28 @@ final class MemberCollection extends Paginates
         $this->http->request('DELETE', $this->base().'/'.rawurlencode($memberId));
     }
 
+    /**
+     * Assign a role (BU or platform) to a member, by role id. Mirrors
+     * `members().assignRole(memberId, roleId)` in road-nestjs.
+     */
+    public function assignRole(string $memberId, string $roleId): void
+    {
+        $this->http->request(
+            'POST',
+            $this->base().'/'.rawurlencode($memberId).'/roles',
+            ['roleId' => $roleId],
+        );
+    }
+
+    /** Revoke a role (BU or platform) from a member, by role id. */
+    public function revokeRole(string $memberId, string $roleId): void
+    {
+        $this->http->request(
+            'DELETE',
+            $this->base().'/'.rawurlencode($memberId).'/roles/'.rawurlencode($roleId),
+        );
+    }
+
     protected function listPath(): string
     {
         return $this->base();

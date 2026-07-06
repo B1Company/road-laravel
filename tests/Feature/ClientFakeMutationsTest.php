@@ -42,6 +42,8 @@ it('drives the whole client surface through the in-memory fake', function () {
     $scope->members()->get('mem_bu_1_u');
     $scope->members()->suspend('mem_bu_1_u');
     $scope->members()->reinstate('mem_bu_1_u');
+    $scope->members()->assignRole('mem_bu_1_u', 'r_Editor');
+    $scope->members()->revokeRole('mem_bu_1_u', 'r_Editor');
     $scope->members()->remove('mem_bu_1_u');
 
     // Roles (scope-keyed)
@@ -72,6 +74,8 @@ it('drives the whole client surface through the in-memory fake', function () {
     expect($client->iam()->authorizeBatch(['subjectType' => 'user', 'subjectId' => 'u', 'scopeId' => 'scope_1', 'permissions' => ['read:Member']])->results)->toHaveCount(1);
 
     $fake->assertCalled('POST', '/iam/authorization/scopes/scope_1/roles');
+    $fake->assertCalled('POST', '/organization/business-units/bu_1/members/mem_bu_1_u/roles');
+    $fake->assertCalled('DELETE', '/organization/business-units/bu_1/members/mem_bu_1_u/roles/r_Editor');
     $fake->assertCalled('DELETE', '/organization/business-units/bu_1/members/mem_bu_1_u');
 });
 

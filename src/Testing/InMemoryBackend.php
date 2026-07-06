@@ -139,6 +139,16 @@ final class InMemoryBackend
             return ['status' => 200, 'body' => ['data' => []]];
         }
 
+        // Assign / revoke a role on a member (before the generic member DELETE
+        // so `/roles/{roleId}` matches the specific handler first).
+        if ($method === 'POST' && preg_match('#^/organization/business-units/([^/]+)/members/([^/]+)/roles$#', $path) === 1) {
+            return ['status' => 201, 'body' => ['message' => 'Role assigned']];
+        }
+
+        if ($method === 'DELETE' && preg_match('#^/organization/business-units/([^/]+)/members/([^/]+)/roles/([^/]+)$#', $path) === 1) {
+            return ['status' => 200, 'body' => ['message' => 'Role revoked']];
+        }
+
         if ($method === 'DELETE' && preg_match('#^/organization/business-units/([^/]+)/members/([^/]+)$#', $path) === 1) {
             return ['status' => 200, 'body' => ['data' => []]];
         }

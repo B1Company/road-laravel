@@ -91,6 +91,25 @@ it('acts on a member through the collection', function () {
         && str_ends_with($req->url(), '/organization/business-units/bu_1/members/m1/suspend'));
 });
 
+it('assigns a role to a member by role id', function () {
+    Http::fake(['*' => Http::response(['message' => 'Role assigned'], 201)]);
+
+    seedRoadClient()->businessUnits('bu_1')->members()->assignRole('m1', 'role_9');
+
+    Http::assertSent(fn (HttpRequest $req) => $req->method() === 'POST'
+        && str_ends_with($req->url(), '/organization/business-units/bu_1/members/m1/roles')
+        && ($req->data()['roleId'] ?? null) === 'role_9');
+});
+
+it('revokes a role from a member by role id', function () {
+    Http::fake(['*' => Http::response(['message' => 'Role revoked'], 200)]);
+
+    seedRoadClient()->businessUnits('bu_1')->members()->revokeRole('m1', 'role_9');
+
+    Http::assertSent(fn (HttpRequest $req) => $req->method() === 'DELETE'
+        && str_ends_with($req->url(), '/organization/business-units/bu_1/members/m1/roles/role_9'));
+});
+
 it('resolves a BU to its IAM scope before listing roles, normalising null description', function () {
     Http::fake([
         'api.road.test/api/alpha/organization/business-units/bu_1' => Http::response(['data' => buWire('bu_1', 'scope_1')]),
