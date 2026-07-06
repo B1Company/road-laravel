@@ -20,24 +20,19 @@ php artisan road:install
 > Not yet published to Packagist — until the first release, require it from
 > the monorepo path repository. The command above is the post-publish form.
 
-Set five env vars in `.env` (the installer appends stubs for these):
+`road:install` publishes the config, then **interactively prompts** for the four
+values it can't infer — `ROAD_API_BASE_URL`, `AUTH_SERVER_ISSUER_URL`, the client
+id, and the client secret (from your Road Dev Portal). It derives
+`AUTH_SERVER_REDIRECT_URI` from your `APP_URL`, writes everything to `.env`, and
+offers to run `road:doctor`. Run it with `--no-interaction` in CI to append
+blank stubs instead.
+
+Only one env var is optional:
 
 ```dotenv
-ROAD_API_BASE_URL=https://api.road.b1.app
-AUTH_SERVER_ISSUER_URL=https://auth.b1.app
-AUTH_SERVER_CLIENT_ID=...
-AUTH_SERVER_CLIENT_SECRET=...
-AUTH_SERVER_REDIRECT_URI=https://your-app.com/auth/road/callback
-
-# Optional — set only if your Auth Server issues project-scoped (audience'd)
-# tokens. Left blank, the audience is neither requested nor validated.
+# Set only if your Auth Server issues project-scoped (audience'd) tokens.
+# Left blank, the audience is neither requested nor validated.
 AUTH_SERVER_AUDIENCE=
-```
-
-Verify the wiring:
-
-```bash
-php artisan road:doctor
 ```
 
 Visit `/auth/road/login` to complete OIDC. After the callback, the
