@@ -54,7 +54,7 @@ final class Me
      */
     public function memberships(): array
     {
-        return $this->businessUnits()->memberships->all();
+        return array_values($this->businessUnits()->memberships->all());
     }
 
     /**
