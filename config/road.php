@@ -133,4 +133,22 @@ return [
         'verify' => (bool) env('ROAD_WEBHOOK_VERIFY', true),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Bridges
+    |--------------------------------------------------------------------------
+    |
+    | Opt-in integrations with Laravel's own subsystems.
+    |
+    | gate — route `road:{action}:{Subject}` abilities through Road's engine so
+    | `Gate::allows('road:read:Project', $buId)`, `$user->can(...)`, and Blade
+    | `@can(...)` answer via Road. Off by default: a host that never uses the
+    | Gate for Road shouldn't pay for the `Gate::before` hook.
+    |
+    */
+
+    'bridges' => [
+        'gate' => (bool) env('ROAD_BRIDGE_GATE', false),
+    ],
+
 ];

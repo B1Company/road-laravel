@@ -13,6 +13,7 @@ use B1Road\Laravel\Auth\JwksCache;
 use B1Road\Laravel\Auth\JwtValidator;
 use B1Road\Laravel\Auth\RoadGuard;
 use B1Road\Laravel\Auth\RoadUserProvider;
+use B1Road\Laravel\Bridges\GateBridge;
 use B1Road\Laravel\Client\HttpTransport;
 use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\Client\RoadClient;
@@ -34,6 +35,7 @@ use B1Road\Laravel\Telemetry\NoopTelemetry;
 use B1Road\Laravel\Telemetry\RoadTelemetry;
 use B1Road\Laravel\Testing\FakeRoadClientFactory;
 use B1Road\Laravel\Webhooks\WebhookSignatureVerifier;
+use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -165,6 +167,10 @@ final class RoadServiceProvider extends ServiceProvider
 
         if ($this->shouldAutoMountInertia($config)) {
             $this->autoMountInertiaSharedProps();
+        }
+
+        if ($config->get('road.bridges.gate', false)) {
+            GateBridge::register($this->app->make(GateContract::class));
         }
 
         if ($this->app->runningInConsole()) {

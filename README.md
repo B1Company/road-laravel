@@ -233,6 +233,31 @@ $trace = Road::can(Action::Read, Subject::Member)->in($buId)->trace();
 // $trace->verdict, $trace->grants, $trace->reason, ...
 ```
 
+### Laravel's Gate (opt-in)
+
+Prefer Laravel's native authorization? Turn on the Gate bridge and reach Road
+through `Gate::allows`, `$user->can`, and Blade `@can` — no second authz API to
+learn. Enable it once:
+
+```dotenv
+ROAD_BRIDGE_GATE=true          # or config/road.php → 'bridges' => ['gate' => true]
+```
+
+```php
+Gate::allows('road:read:Project', $buId);        // → Road::can('read', 'Project')->in($buId)->check()
+$request->user()->can('road:create:Project', $buId);
+```
+
+```blade
+@can('road:update:Project', $buId)
+    <button>Edit</button>
+@endcan
+```
+
+The ability is `road:{action}:{Subject}` and the **first argument is the business
+unit id**. Anything not prefixed `road:` (or malformed) falls through to your
+app's own gates and policies untouched — the bridge only answers Road abilities.
+
 ### The permission algebra
 
 Permissions are `"$action:$Subject"` strings. The enum cases match the
