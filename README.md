@@ -142,9 +142,11 @@ Road::client()->businessUnits($buId)->invitations()->create([
 Road::client()->invitations()->accept($invitationId);
 
 // A membership carries the platforms its BU subscribes to
-foreach (Road::client()->me()->businessUnits()->memberships as $m) {
+foreach (Road::client()->me()->memberships() as $m) { // ...or ->businessUnits()->memberships
     foreach ($m->platformSubscriptions as $sub) { /* $sub->platformId, $sub->scopeId */ }
 }
+// Roles defined on a platform the BU subscribes to
+$roles = Road::client()->me()->platformRoles($platformPublicId, $buId);
 // …or resolve one subscription directly by the platform's public id
 $sub = Road::client()->businessUnits($buId)->subscriptions('plat_payment_gw');
 Road::can('read', 'Invoice')->in($sub->scopeId); // check a platform-scoped permission

@@ -6,8 +6,10 @@ namespace B1Road\Laravel\Client\Resources;
 
 use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\DTO\CurrentUser;
+use B1Road\Laravel\DTO\Membership;
 use B1Road\Laravel\DTO\MyBusinessUnits;
 use B1Road\Laravel\DTO\MyPermissions;
+use B1Road\Laravel\DTO\Role;
 
 /**
  * `Road::client()->me()->*` — the calling user's own surface. Mirrors
@@ -42,6 +44,40 @@ final class Me
             'memberships' => $data['memberships'] ?? [],
             'pendingInvitations' => $data['pendingInvitations'] ?? [],
         ]);
+    }
+
+    /**
+     * The caller's memberships — a convenience over `businessUnits()->memberships`.
+     * Mirrors `me().memberships()` in @b1-road/nestjs.
+     *
+     * @return list<Membership>
+     */
+    public function memberships(): array
+    {
+        return $this->businessUnits()->memberships->all();
+    }
+
+    /**
+     * Roles defined on a platform the BU subscribes to (e.g. the platform's
+     * Admin/Operator roles). Resolves `(platformId, businessUnitId)` to the
+     * subscription's IAM scope via the resolver endpoint, then lists that
+     * scope's roles (all pages). Mirrors the NestJS SDK's `me().platformRoles()`.
+     * Unlike Nest, `platformId` is required — the Laravel client has no
+     * platform-id default to fall back to.
+     *
+     * @return list<Role>
+     */
+    public function platformRoles(string $platformId, string $businessUnitId): array
+    {
+        $resolution = $this->http->request(
+            'GET',
+            '/organization/business-units/'.rawurlencode($businessUnitId)
+                .'/subscriptions/'.rawurlencode($platformId),
+        );
+        $data = is_array($resolution['data'] ?? null) ? $resolution['data'] : $resolution;
+        $scopeId = (string) ($data['scopeId'] ?? '');
+
+        return RoleCollection::forScope($this->http, $scopeId)->all();
     }
 
     /**
