@@ -192,6 +192,17 @@ final class RoadServiceProvider extends ServiceProvider
             );
         }
 
+        // Register the artisan commands unconditionally so `Artisan::call('road:*')`
+        // works from an HTTP request or a queued job too (e.g. an in-app health
+        // panel that runs road:doctor) — not only from the CLI. Cheap to register.
+        $this->commands([
+            InstallCommand::class,
+            DoctorCommand::class,
+            WhoamiCommand::class,
+            GenerateDtosCommand::class,
+        ]);
+
+        // Publishing is only meaningful when a human runs `vendor:publish`.
         if ($this->app->runningInConsole()) {
             $this->publishes([
                 __DIR__.'/../config/road.php' => config_path('road.php'),
@@ -200,13 +211,6 @@ final class RoadServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../resources/js/road-inertia-provider.tsx' => resource_path('js/lib/road-inertia-provider.tsx'),
             ], 'road-inertia');
-
-            $this->commands([
-                InstallCommand::class,
-                DoctorCommand::class,
-                WhoamiCommand::class,
-                GenerateDtosCommand::class,
-            ]);
         }
     }
 
