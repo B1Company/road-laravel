@@ -17,7 +17,11 @@ Route::middleware(['web', 'road.errors'])->prefix('auth/road')->group(function (
     Route::post('/logout', [AuthController::class, 'logout'])->name('road.auth.logout');
 });
 
-Route::middleware(['road.errors', 'road'])->group(function (): void {
+// These need the `web` group for the same reason the proxy does: the BFF
+// token store lives in the session, so `road` (EnsureRoadAuthenticated) can
+// only resolve the caller once StartSession has run. Without `web` every call
+// 401s "unauthenticated" even for a logged-in browser (caught driving Beacon).
+Route::middleware(['web', 'road.errors', 'road'])->group(function (): void {
     Route::get('/road/whoami', WhoamiController::class)->name('road.whoami');
 
     Route::post('/road/business-unit', [BusinessUnitController::class, 'set'])
