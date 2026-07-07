@@ -171,7 +171,19 @@ final class RoadServiceProvider extends ServiceProvider
 
         // Fail loud at boot on a production misconfiguration that would otherwise
         // 401/500 every request silently. No-op outside production.
-        BootGuards::assert($this->app, $config);
+        //
+        // Skip in console: `composer install` on a deploy runs build-time artisan
+        // commands (`package:discover`, `config:cache`, `optimize`, …) that boot
+        // providers *before* the deploy has injected the OIDC secrets — the guard
+        // would fatal the build. It exists for the silent-HTTP-401 path (an HTTP
+        // boot has runningInConsole() === false, so it still fires there), and this
+        // also keeps `php artisan road:doctor` — the tool that diagnoses exactly
+        // this misconfig — runnable in a misconfigured app. Console/queue paths
+        // fail loud at the call site anyway (a scheme-less base URL throws a
+        // RoadApiError on first use), so nothing is silently lost.
+        if (! $this->app->runningInConsole()) {
+            BootGuards::assert($this->app, $config);
+        }
 
         if ($config->get('road.proxy.enabled', true)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/proxy.php');

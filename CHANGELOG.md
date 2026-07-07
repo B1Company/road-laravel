@@ -12,6 +12,17 @@ contract from `alpha` to `v1` (see
 ## [Unreleased]
 
 ### Fixed
+- **The production boot guard no longer fires during Composer's
+  `package:discover` (and other console/build commands).** A deploy that runs
+  `composer install` with `APP_ENV=production` but before the OIDC secrets are
+  injected would fatal at the post-autoload `package:discover` step, aborting the
+  build (the guard threw at provider boot). The guard now runs only for
+  non-console boots (`! runningInConsole()`) — it still fires on the HTTP path it
+  exists to protect (a silent 401/500 in prod), and it no longer blocks
+  `php artisan road:doctor`, the very tool meant to diagnose the misconfig, from
+  running in a misconfigured app. Console/queue paths fail loud at the call site
+  anyway (a scheme-less base URL throws on first use). Verified against a real
+  deploy simulation (fresh app + `APP_ENV=production` + `composer install`).
 - **`road:doctor` no longer reports a broken cache store as an Auth-Server
   failure.** Discovery + JWKS cache through Laravel's cache repository, so a
   broken `CACHE_STORE` (e.g. the `database` store with no migrated `cache` table,
