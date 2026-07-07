@@ -21,6 +21,25 @@ contract from `alpha` to `v1` (see
   jwt-framework v4). CI now runs a `(8.3, ^13.0)` matrix leg alongside `^12.0`.
 
 ### Fixed
+- **The production boot guard no longer fires during Composer's
+  `package:discover` (and other console/build commands).** A deploy that runs
+  `composer install` with `APP_ENV=production` but before the OIDC secrets are
+  injected would fatal at the post-autoload `package:discover` step, aborting the
+  build (the guard threw at provider boot). The guard now runs only for
+  non-console boots (`! runningInConsole()`) — it still fires on the HTTP path it
+  exists to protect (a silent 401/500 in prod), and it no longer blocks
+  `php artisan road:doctor`, the very tool meant to diagnose the misconfig, from
+  running in a misconfigured app. Console/queue paths fail loud at the call site
+  anyway (a scheme-less base URL throws on first use). Verified against a real
+  deploy simulation (fresh app + `APP_ENV=production` + `composer install`).
+- **`road:doctor` no longer reports a broken cache store as an Auth-Server
+  failure.** Discovery + JWKS cache through Laravel's cache repository, so a
+  broken `CACHE_STORE` (e.g. the `database` store with no migrated `cache` table,
+  the default on a fresh app) surfaced its storage error *as* the discovery/JWKS
+  verdict — even though the network fetch worked (the uncached clock-skew check to
+  the same issuer stayed green, a confusing split). The doctor now preflights the
+  cache store as its own check; if it's down, discovery/JWKS report "skipped —
+  cache unavailable" instead of blaming the network.
 - **The `/road-api` proxy route now runs in the `web` middleware group.** It was
   mounted with only `road.errors` + `road`, so `StartSession` never ran and the
   session-backed token store was empty on every proxied call — each one 401'd
