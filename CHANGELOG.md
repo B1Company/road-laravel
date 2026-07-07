@@ -12,6 +12,14 @@ contract from `alpha` to `v1` (see
 ## [Unreleased]
 
 ### Fixed
+- **`road:doctor` no longer reports a broken cache store as an Auth-Server
+  failure.** Discovery + JWKS cache through Laravel's cache repository, so a
+  broken `CACHE_STORE` (e.g. the `database` store with no migrated `cache` table,
+  the default on a fresh app) surfaced its storage error *as* the discovery/JWKS
+  verdict — even though the network fetch worked (the uncached clock-skew check to
+  the same issuer stayed green, a confusing split). The doctor now preflights the
+  cache store as its own check; if it's down, discovery/JWKS report "skipped —
+  cache unavailable" instead of blaming the network.
 - **The `/road-api` proxy route now runs in the `web` middleware group.** It was
   mounted with only `road.errors` + `road`, so `StartSession` never ran and the
   session-backed token store was empty on every proxied call — each one 401'd

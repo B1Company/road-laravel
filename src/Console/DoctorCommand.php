@@ -8,6 +8,7 @@ use B1Road\Laravel\Auth\AuthServer\OidcDiscovery;
 use B1Road\Laravel\Auth\JwksCache;
 use B1Road\Laravel\Inertia\ShareRoadContext;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -44,6 +45,7 @@ final class DoctorCommand extends Command
         OidcDiscovery $discovery,
         JwksCache $jwks,
         Router $router,
+        CacheRepository $cache,
     ): int {
         $ok = true;
 
@@ -55,9 +57,19 @@ final class DoctorCommand extends Command
         $ok &= $this->checkSessionDriver($app, $config);
 
         $ok &= $this->checkRoadApiReachable($config, $http);
-        $ok &= $this->checkAuthServerDiscovery($discovery);
+
+        // Preflight the cache store BEFORE the discovery/JWKS checks: both cache
+        // their fetch through Laravel's cache repository, so a broken cache backend
+        // (e.g. the `database` store with no migrated `cache` table) would throw a
+        // storage error that masquerades as an Auth-Server connectivity failure.
+        // If the cache is down, we report *that* and skip the two cached checks
+        // rather than blame the network — the (uncached) clock-skew check below
+        // still proves the Auth Server is reachable.
+        $cacheOk = $this->checkCacheStore($cache);
+        $ok &= $cacheOk;
+        $ok &= $this->checkAuthServerDiscovery($discovery, $cacheOk);
         $ok &= $this->checkClockSkew($config, $http);
-        $ok &= $this->checkJwks($jwks);
+        $ok &= $this->checkJwks($jwks, $cacheOk);
         $ok &= $this->checkMiddlewareAliases($router);
         $ok &= $this->checkProxyMounted($config, $router);
         $ok &= $this->checkInertiaSharedProps($config, $router);
@@ -156,8 +168,53 @@ final class DoctorCommand extends Command
         return false;
     }
 
-    private function checkAuthServerDiscovery(OidcDiscovery $discovery): bool
+    /**
+     * Round-trip a sentinel through the configured cache store. Discovery + JWKS
+     * cache through this repository, so a broken store surfaces there as a
+     * confusing storage error in place of the real network result; probing it
+     * first lets those checks report "skipped — cache unavailable" instead.
+     */
+    private function checkCacheStore(CacheRepository $cache): bool
     {
+        $key = 'road:doctor:cache-probe';
+        try {
+            $cache->put($key, '1', 5);
+            $value = $cache->get($key);
+            $cache->forget($key);
+            if ($value !== '1') {
+                $this->line('  ✗ Cache store did not return the value it just stored — check your CACHE_STORE backend.');
+
+                return false;
+            }
+            $this->line('  ✓ Cache store read/write OK ('.((string) $this->cacheStoreName()).')');
+
+            return true;
+        } catch (Throwable $e) {
+            $this->line('  ✗ Cache store unavailable: '.$e->getMessage());
+            $this->line('     Discovery + JWKS are cached through this store, so their checks are skipped below.');
+            $this->line('     Fix the CACHE_STORE backend (e.g. `database` needs a migrated `cache` table; sqlite needs the file).');
+
+            return false;
+        }
+    }
+
+    private function cacheStoreName(): string
+    {
+        $store = config('cache.default');
+
+        return is_string($store) ? $store : 'default';
+    }
+
+    private function checkAuthServerDiscovery(OidcDiscovery $discovery, bool $cacheOk): bool
+    {
+        if (! $cacheOk) {
+            $this->line('  ⊘ Auth Server discovery — skipped (cache store unavailable; see above)');
+
+            // Not a failure of its own: the cache check already failed and owns
+            // the ✗. The clock-skew check below still proves reachability.
+            return true;
+        }
+
         try {
             $meta = $discovery->metadata();
             $this->line('  ✓ Auth Server discovery loaded (jwks_uri='.($meta['jwks_uri'] ?? 'missing').')');
@@ -211,8 +268,14 @@ final class DoctorCommand extends Command
         }
     }
 
-    private function checkJwks(JwksCache $jwks): bool
+    private function checkJwks(JwksCache $jwks, bool $cacheOk): bool
     {
+        if (! $cacheOk) {
+            $this->line('  ⊘ JWKS — skipped (cache store unavailable; see above)');
+
+            return true;
+        }
+
         try {
             $set = $jwks->get();
             $count = count($set->all());
