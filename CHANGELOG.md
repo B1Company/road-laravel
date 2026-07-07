@@ -11,6 +11,15 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Added
+- **Laravel 13 support.** `illuminate/*` constraints widen to
+  `^11.0|^12.0|^13.0`, and `web-token/jwt-framework` accepts `^3.3|^4.0` (v3 caps
+  `brick/math` at `^0.12`, which Laravel 13 floors at `0.14.2`; v4 lifts the
+  range). No SDK source changes were needed — the full suite is green on
+  `laravel/framework` v13 (verified with `orchestra/testbench 11` + `pest 4`), and
+  the existing 11/12 line is unaffected (`pest`/`pint`/`phpstan` all green with
+  jwt-framework v4). CI now runs a `(8.3, ^13.0)` matrix leg alongside `^12.0`.
+
 ### Fixed
 - **The `/road-api` proxy route now runs in the `web` middleware group.** It was
   mounted with only `road.errors` + `road`, so `StartSession` never ran and the
