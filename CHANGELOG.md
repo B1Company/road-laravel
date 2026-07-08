@@ -11,14 +11,7 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
-### Added
-- **Laravel 13 support.** `illuminate/*` constraints widen to
-  `^11.0|^12.0|^13.0`, and `web-token/jwt-framework` accepts `^3.3|^4.0` (v3 caps
-  `brick/math` at `^0.12`, which Laravel 13 floors at `0.14.2`; v4 lifts the
-  range). No SDK source changes were needed — the full suite is green on
-  `laravel/framework` v13 (verified with `orchestra/testbench 11` + `pest 4`), and
-  the existing 11/12 line is unaffected (`pest`/`pint`/`phpstan` all green with
-  jwt-framework v4). CI now runs a `(8.3, ^13.0)` matrix leg alongside `^12.0`.
+## [0.1.0-alpha.1] — 2026-07-08
 
 ### Fixed
 - **The production boot guard no longer fires during Composer's
@@ -62,6 +55,13 @@ contract from `alpha` to `v1` (see
   consumer).
 
 ### Added
+- **Laravel 13 support.** `illuminate/*` constraints widen to
+  `^11.0|^12.0|^13.0`, and `web-token/jwt-framework` accepts `^3.3|^4.0` (v3 caps
+  `brick/math` at `^0.12`, which Laravel 13 floors at `0.14.2`; v4 lifts the
+  range). No SDK source changes were needed — the full suite is green on
+  `laravel/framework` v13 (verified with `orchestra/testbench 11` + `pest 4`), and
+  the existing 11/12 line is unaffected (`pest`/`pint`/`phpstan` all green with
+  jwt-framework v4). CI now runs a `(8.3, ^13.0)` matrix leg alongside `^12.0`.
 - **`Subject|string` / `Action|string` parity with `@b1-road/nestjs`** across
   `Road::can()`, the `#[RequirePermission]` attribute, and the `road.permission`
   middleware. Platform-defined subjects outside Road's core algebra (e.g.
@@ -159,5 +159,6 @@ contract from `alpha` to `v1` (see
 - **Tooling**: `road:install`, `road:doctor`, `road:whoami`, and
   `road:generate-dtos` (OpenAPI-contract codegen with a `--check` drift gate).
 
-[Unreleased]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha...HEAD
+[Unreleased]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.1...HEAD
+[0.1.0-alpha.1]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha...road-laravel-v0.1.0-alpha.1
 [0.1.0-alpha]: https://github.com/B1Company/road/releases/tag/road-laravel-v0.1.0-alpha
