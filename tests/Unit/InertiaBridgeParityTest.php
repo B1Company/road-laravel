@@ -32,7 +32,7 @@ it('ships a vendor:publish bridge byte-identical to the @b1-road/laravel-react s
         ->toBe(
             hash_file('sha256', $canonical),
             "The SDK's vendor:publish bridge (resources/js/road-inertia-provider.tsx) has "
-            ."drifted from the canonical @b1-road/laravel-react source. Copy one over the "
+            .'drifted from the canonical @b1-road/laravel-react source. Copy one over the '
             .'other so both are byte-identical — the bridge has a single source of truth.'
         );
 });
