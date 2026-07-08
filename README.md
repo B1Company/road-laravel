@@ -21,6 +21,14 @@ php artisan road:install
 > release is `0.1.0-alpha.1`, and Composer's default `minimum-stability`
 > (`stable`) would otherwise refuse a pre-release version. Drop the suffix once
 > a stable `0.1.0` ships.
+>
+> If Composer reports a `brick/math` version conflict, add `-W`:
+> `composer require b1-road/laravel:@alpha -W`. A current Laravel skeleton can
+> lock `brick/math` at a version newer than `web-token/jwt-framework` (a
+> transitive dependency of the SDK) currently permits; `-W` lets Composer adjust
+> that locked transitive dependency to a compatible version, with no effect on
+> your app code. (We're tracking upstream `web-token/jwt-framework` support for
+> the newer `brick/math` so the flag won't be needed.)
 
 `road:install` publishes the config, then **interactively prompts** for the four
 values it can't infer — `ROAD_API_BASE_URL`, `AUTH_SERVER_ISSUER_URL`, the client
