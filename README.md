@@ -21,7 +21,7 @@ php artisan road:install
 > published release is `0.1.0-alpha.1`, and Composer's default
 > `minimum-stability` (`stable`) would otherwise refuse a pre-release version.
 > Drop the suffix once a stable `0.1.0` ships.
-
+>
 > Not yet published to Packagist — until the first release lands, require it
 > from the monorepo path repository. The command above is the post-publish form.
 
