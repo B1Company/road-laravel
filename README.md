@@ -17,13 +17,10 @@ composer require b1-road/laravel:@alpha
 php artisan road:install
 ```
 
-> The `:@alpha` suffix is required while the package is pre-1.0: the first
-> published release is `0.1.0-alpha.1`, and Composer's default
-> `minimum-stability` (`stable`) would otherwise refuse a pre-release version.
-> Drop the suffix once a stable `0.1.0` ships.
->
-> Not yet published to Packagist — until the first release lands, require it
-> from the monorepo path repository. The command above is the post-publish form.
+> The `:@alpha` suffix is required while the package is pre-1.0: the current
+> release is `0.1.0-alpha.1`, and Composer's default `minimum-stability`
+> (`stable`) would otherwise refuse a pre-release version. Drop the suffix once
+> a stable `0.1.0` ships.
 
 `road:install` publishes the config, then **interactively prompts** for the four
 values it can't infer — `ROAD_API_BASE_URL`, `AUTH_SERVER_ISSUER_URL`, the client
