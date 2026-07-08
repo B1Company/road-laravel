@@ -50,8 +50,8 @@ final class OidcProvider
             'code_challenge_method' => 'S256',
         ];
 
-        // Audience is optional; Zitadel uses it to scope the access token to a
-        // specific project. Pass-through if configured.
+        // Audience is optional; the Auth Server uses it to scope the access token
+        // to a specific project. Pass-through if configured.
         $audience = $this->config->get('road.auth_server.audience');
         if (is_string($audience) && $audience !== '') {
             $params['audience'] = $audience;

@@ -137,7 +137,11 @@ final class ServiceTokenStore
         $audience = (string) ($this->config->get('road.service.audience') ?? $this->config->get('road.auth_server.audience', ''));
 
         // Mirror road-nestjs: request the project-audience'd scope when an
-        // audience is configured, else plain `openid`.
+        // audience is configured, else plain `openid`. The `urn:...:aud` literal
+        // is the Auth Server's required reserved scope syntax for scoping a token
+        // to a project audience — it is a protocol wire-constant, not a
+        // configurable name, so it must be sent verbatim for audience-scoped
+        // service tokens to work. Only used when `audience` is set (optional).
         return $audience !== ''
             ? 'openid urn:zitadel:iam:org:project:id:'.$audience.':aud'
             : 'openid';
