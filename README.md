@@ -22,13 +22,13 @@ php artisan road:install
 > (`stable`) would otherwise refuse a pre-release version. Drop the suffix once
 > a stable `0.1.0` ships.
 >
-> If Composer reports a `brick/math` version conflict, add `-W`:
-> `composer require b1-road/laravel:@alpha -W`. A current Laravel skeleton can
-> lock `brick/math` at a version newer than `web-token/jwt-framework` (a
-> transitive dependency of the SDK) currently permits; `-W` lets Composer adjust
-> that locked transitive dependency to a compatible version, with no effect on
-> your app code. (We're tracking upstream `web-token/jwt-framework` support for
-> the newer `brick/math` so the flag won't be needed.)
+> **On Laravel 13**, add `-W`: `composer require b1-road/laravel:@alpha -W`.
+> The Laravel 13 skeleton locks `brick/math 0.18`, which `web-token/jwt-framework`
+> (a transitive dependency of the SDK) does not yet permit; `-W` lets Composer
+> downgrade that locked transitive dependency to a compatible `0.17`, with no
+> effect on your app code. Laravel 11 and 12 install with a plain `composer
+> require` — no flag needed. (Tracking upstream `web-token/jwt-framework` support
+> for `brick/math 0.18` to drop the flag on 13 too.)
 
 `road:install` publishes the config, then **interactively prompts** for the four
 values it can't infer — `ROAD_API_BASE_URL`, `AUTH_SERVER_ISSUER_URL`, the client
