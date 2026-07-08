@@ -120,9 +120,20 @@ export function RoadInertiaProvider({
   const csrfCookieName = providerProps?.csrfCookieName ?? "XSRF-TOKEN";
   const csrfHeaderName = providerProps?.csrfHeaderName ?? "X-XSRF-TOKEN";
 
+  // Defense-in-depth: `RoadProviderPassthrough` Omits the auth-mode keys, but
+  // `Omit` is compile-time only — a JS caller (or a cast) could still smuggle
+  // `authMode`/`jwt`/`client` in and flip the bridge out of cookie mode,
+  // breaking the "no JWT in the browser" invariant. Strip them at runtime.
+  const {
+    authMode: _authMode,
+    jwt: _jwt,
+    client: _client,
+    ...safeProviderProps
+  } = (providerProps ?? {}) as Record<string, unknown>;
+
   return (
     <RoadProvider
-      {...providerProps}
+      {...safeProviderProps}
       apiBaseUrl={road.apiBaseUrl}
       businessUnitId={road.currentBusinessUnitId ?? undefined}
       onUnauthenticated={() => {
