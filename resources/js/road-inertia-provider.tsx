@@ -25,7 +25,11 @@
  * `vendor:publish` (a drift-guard test keeps the two in lockstep).
  */
 
-import { RoadProvider, type RoadProviderProps } from "@b1-road/react";
+import {
+  RoadProvider,
+  type BusinessUnitStorage,
+  type RoadProviderProps,
+} from "@b1-road/react";
 import { router, usePage } from "@inertiajs/react";
 import type { ReactNode } from "react";
 
@@ -51,9 +55,11 @@ type PageProps = { road: RoadInertiaProps };
 /**
  * The subset of `<RoadProvider>` props an integrator may pass through the
  * bridge. The bridge owns everything it derives from the `road` shared props
- * (`apiBaseUrl`, `businessUnitId`, `onUnauthenticated`, `onSelectBusinessUnit`)
- * and the cookie auth mode (`authMode`/`jwt`/`client`) — overriding those would
- * break the BFF "no JWT in the browser" invariant, so they are excluded here.
+ * (`apiBaseUrl`, `businessUnitId`, `onUnauthenticated`, `onSelectBusinessUnit`),
+ * the session-backed `businessUnitStorage`, and the cookie auth mode
+ * (`authMode`/`jwt`/`client`) — overriding those would break the BFF "no JWT in
+ * the browser" invariant or the single-source-of-truth store, so they are
+ * excluded here.
  * Everything else (`appearance`, `locale`, `localization`, `platformId`, CSRF
  * config, `withCredentials`, `retry`, `telemetry`, …) is yours to set.
  */
@@ -62,6 +68,7 @@ export type RoadProviderPassthrough = Omit<
   | "children"
   | "apiBaseUrl"
   | "businessUnitId"
+  | "businessUnitStorage"
   | "onUnauthenticated"
   | "onSelectBusinessUnit"
   | "authMode"
@@ -128,54 +135,68 @@ export function RoadInertiaProvider({
     authMode: _authMode,
     jwt: _jwt,
     client: _client,
+    businessUnitStorage: _buStorage,
     ...safeProviderProps
   } = (providerProps ?? {}) as Record<string, unknown>;
+
+  // Single source of truth for the current BU: the Laravel session.
+  //
+  // `@b1-road/react` defaults to a localStorage-backed store, which would make
+  // the *client* remember a BU independently of the *server* session that
+  // authorization actually gates on — they can diverge (a failed select, a
+  // second device). Point the provider's storage at the session instead: reads
+  // return the `road` shared prop (server truth), writes POST the SDK's
+  // business-unit route (server persist) then reload to re-hydrate the prop.
+  // localStorage is never consulted or written, so there is one store.
+  const sessionBusinessUnitStorage: BusinessUnitStorage = {
+    get: () => road.currentBusinessUnitId ?? null,
+    set: (_key, id) => {
+      // No-op when already in sync — suppresses the redundant POST + reload the
+      // provider's auto-select-first fires at mount on a fresh session.
+      if (id === road.currentBusinessUnitId) return;
+
+      // The route is a JSON API (returns { currentBusinessUnitId }), not an
+      // Inertia endpoint — POST with fetch, then reload to re-sync the shared
+      // prop. An Inertia visit here would reject the JSON response.
+      void fetch(selectBusinessUnitUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          [csrfHeaderName]: readXsrfToken(csrfCookieName),
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({ id }),
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(
+              `[@b1-road/laravel-react] business-unit select failed: ${res.status} ${res.statusText}`,
+            );
+          }
+          // Re-hydrate `road.currentBusinessUnitId` only once the server accepted.
+          router.reload();
+        })
+        .catch((err) => {
+          // Surface the failure instead of silently reverting on reload.
+          console.error(err);
+        });
+    },
+    // The session is cleared server-side (logout); nothing to remove client-side.
+    remove: () => {},
+  };
 
   return (
     <RoadProvider
       {...safeProviderProps}
       apiBaseUrl={road.apiBaseUrl}
       businessUnitId={road.currentBusinessUnitId ?? undefined}
+      businessUnitStorage={sessionBusinessUnitStorage}
       onUnauthenticated={() => {
         const intended = encodeURIComponent(
           window.location.pathname + window.location.search,
         );
         window.location.assign(`${road.loginUrl}?intended=${intended}`);
-      }}
-      onSelectBusinessUnit={(id) => {
-        // Skip the round-trip when the selection already matches the server's
-        // current BU — this suppresses the redundant POST + reload that the
-        // provider's auto-select-first fires at mount on a fresh session.
-        if (id === road.currentBusinessUnitId) return;
-
-        // The Laravel SDK's business-unit route is a JSON API (it returns
-        // { currentBusinessUnitId }), not an Inertia endpoint — POST it with
-        // fetch, then reload to re-sync `props.road.currentBusinessUnitId`.
-        // Issuing an Inertia visit here would reject the JSON response
-        // ("all Inertia requests must receive a valid Inertia response").
-        void fetch(selectBusinessUnitUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            [csrfHeaderName]: readXsrfToken(csrfCookieName),
-          },
-          credentials: "same-origin",
-          body: JSON.stringify({ id }),
-        })
-          .then((res) => {
-            if (!res.ok) {
-              throw new Error(
-                `[@b1-road/laravel-react] business-unit select failed: ${res.status} ${res.statusText}`,
-              );
-            }
-            // Only re-sync the shared props once the server accepted the change.
-            router.reload();
-          })
-          .catch((err) => {
-            // Surface the failure instead of silently reverting on reload.
-            console.error(err);
-          });
       }}
     >
       {children}
