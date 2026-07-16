@@ -11,6 +11,20 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Fixed
+
+- Logout now revokes the access token at the Road API: `OidcProvider::logout()`
+  POSTs `/iam/identity/me/logout` (best-effort) with the stored token before
+  clearing the token store, so the JWT stops working at the Road API
+  immediately instead of surviving until natural expiry. Note the semantics:
+  the endpoint terminates **all** of the user's sessions (there is no
+  per-session variant).
+
+### Added
+
+- `Road::client()->me()->logout()` — typed client method for the revocation
+  endpoint, for custom sign-out flows.
+
 ## [0.1.0-alpha.1] — 2026-07-08
 
 ### Fixed

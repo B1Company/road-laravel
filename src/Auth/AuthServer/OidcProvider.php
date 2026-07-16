@@ -86,7 +86,31 @@ final class OidcProvider
 
     public function logout(Request $request): RedirectResponse
     {
-        $idToken = $this->tokenStore->get()?->idToken;
+        $tokens = $this->tokenStore->get();
+        $idToken = $tokens?->idToken;
+
+        // Revoke the access token at the Road API before clearing the store:
+        // POST /me/logout stamps the revocation watermark, so the JWT stops
+        // working at Road's door immediately instead of surviving until
+        // natural expiry (plan 47). Best-effort — a failing revocation must
+        // never trap the user in a session they are trying to leave.
+        // NOTE: /me/logout terminates ALL of the user's sessions (no
+        // per-session revocation — the JWT carries no sid).
+        if ($tokens?->accessToken !== null && $tokens->accessToken !== '') {
+            try {
+                $baseUrl = rtrim((string) $this->config->get('road.api.base_url', ''), '/');
+                $version = (string) $this->config->get('road.api.version', 'alpha');
+                if ($baseUrl !== '') {
+                    $this->http
+                        ->withToken($tokens->accessToken)
+                        ->timeout(5)
+                        ->post("{$baseUrl}/api/{$version}/iam/identity/me/logout");
+                }
+            } catch (Throwable) {
+                // Swallow: network failures at logout time are not the user's problem.
+            }
+        }
+
         $this->tokenStore->clear();
         $request->session()->forget('road.oidc.pkce');
 

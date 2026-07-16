@@ -35,6 +35,22 @@ final class Me
         return CurrentUser::from($data);
     }
 
+    /**
+     * Revoke the caller's access: `POST /iam/identity/me/logout`.
+     *
+     * Terminates ALL of the caller's Auth Server sessions and stamps the
+     * revocation watermark, so every already-issued access token for this
+     * user stops working at the Road API immediately. There is no
+     * per-session variant — the access token carries no session id.
+     *
+     * The SDK's own logout route calls this automatically; reach for it
+     * directly when building a custom sign-out flow.
+     */
+    public function logout(): void
+    {
+        $this->http->request('POST', '/iam/identity/me/logout');
+    }
+
     public function businessUnits(): MyBusinessUnits
     {
         $body = $this->http->request('GET', '/me/business-units');

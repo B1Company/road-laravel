@@ -74,3 +74,33 @@ it('ends the BFF session on logout so the caller is no longer authenticated', fu
         ->assertStatus(401)
         ->assertJsonPath('error.code', 'unauthenticated');
 });
+
+it('revokes the access token at the Road API on logout (POST /me/logout)', function () {
+    // Plan 47 regression guard: clearing the store is not enough — the
+    // already-issued access token would keep working against the Road API
+    // until natural expiry. Logout must stamp the revocation watermark via
+    // POST /iam/identity/me/logout with the stored token, BEFORE clearing.
+    Illuminate\Support\Facades\Http::fake([
+        'https://api.road.test/*' => Illuminate\Support\Facades\Http::response(null, 204),
+    ]);
+    seedBusinessUnitSession();
+
+    $this->post('/auth/road/logout')->assertRedirect();
+
+    Illuminate\Support\Facades\Http::assertSent(function ($request) {
+        return $request->method() === 'POST'
+            && $request->url() === 'https://api.road.test/api/alpha/iam/identity/me/logout'
+            && $request->hasHeader('Authorization', 'Bearer sess-bearer-bu');
+    });
+});
+
+it('still completes logout when the revocation call fails (best-effort)', function () {
+    Illuminate\Support\Facades\Http::fake([
+        'https://api.road.test/*' => fn () => throw new Illuminate\Http\Client\ConnectionException('network down'),
+    ]);
+    seedBusinessUnitSession();
+
+    // A dead Road API must never trap the user in the session.
+    $this->post('/auth/road/logout')->assertRedirect();
+    expect(app(TokenStore::class)->get())->toBeNull();
+});
