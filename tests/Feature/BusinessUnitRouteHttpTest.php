@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use B1Road\Laravel\Auth\AuthServer\TokenSet;
 use B1Road\Laravel\Auth\AuthServer\TokenStore;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
 
 /**
  * Drives the REAL `/road/business-unit` route through the full middleware
@@ -80,14 +82,14 @@ it('revokes the access token at the Road API on logout (POST /me/logout)', funct
     // already-issued access token would keep working against the Road API
     // until natural expiry. Logout must stamp the revocation watermark via
     // POST /iam/identity/me/logout with the stored token, BEFORE clearing.
-    Illuminate\Support\Facades\Http::fake([
-        'https://api.road.test/*' => Illuminate\Support\Facades\Http::response(null, 204),
+    Http::fake([
+        'https://api.road.test/*' => Http::response(null, 204),
     ]);
     seedBusinessUnitSession();
 
     $this->post('/auth/road/logout')->assertRedirect();
 
-    Illuminate\Support\Facades\Http::assertSent(function ($request) {
+    Http::assertSent(function ($request) {
         return $request->method() === 'POST'
             && $request->url() === 'https://api.road.test/api/alpha/iam/identity/me/logout'
             && $request->hasHeader('Authorization', 'Bearer sess-bearer-bu');
@@ -95,8 +97,8 @@ it('revokes the access token at the Road API on logout (POST /me/logout)', funct
 });
 
 it('still completes logout when the revocation call fails (best-effort)', function () {
-    Illuminate\Support\Facades\Http::fake([
-        'https://api.road.test/*' => fn () => throw new Illuminate\Http\Client\ConnectionException('network down'),
+    Http::fake([
+        'https://api.road.test/*' => fn () => throw new ConnectionException('network down'),
     ]);
     seedBusinessUnitSession();
 
