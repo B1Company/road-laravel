@@ -18,7 +18,7 @@ php artisan road:install
 ```
 
 > The `:@alpha` suffix is required while the package is pre-1.0: the current
-> release is `0.1.0-alpha.1`, and Composer's default `minimum-stability`
+> release is `0.1.0-alpha.2`, and Composer's default `minimum-stability`
 > (`stable`) would otherwise refuse a pre-release version. Drop the suffix once
 > a stable `0.1.0` ships.
 >
