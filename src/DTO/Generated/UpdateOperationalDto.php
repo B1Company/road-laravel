@@ -16,6 +16,7 @@ final class UpdateOperationalDto extends Data
         public ?string $webhookUrl = null,
         public ?string $healthEndpoint = null,
         public ?string $runbookUrl = null,
+        public ?string $appUrl = null,
         public ?string $teamOwner = null,
         public ?string $zitadelClientId = null,
         public ?float $version = null,
