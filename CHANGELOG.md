@@ -32,6 +32,23 @@ contract from `alpha` to `v1` (see
   Bridge types into this published package, and threw outright on a placeholder
   schema named `Object` (a PHP reserved word).
 
+## [0.1.0-alpha.3] — 2026-07-28
+
+### Security
+
+- **Open redirect in the OIDC login flow (CWE-601).**
+  `AuthController::callback()` redirected to the session's `road.intended_url`
+  verbatim, and `intended` is attacker-settable on the unauthenticated
+  `GET /auth/road/login` (which stores it as-is). A crafted link like
+  `…/auth/road/login?intended=https://evil.example/phish` therefore landed the
+  victim on an attacker-controlled page immediately after a genuine login —
+  Symfony's `RedirectResponse` emits the value in the `Location` header
+  unmodified. The callback now honors only a same-origin absolute **path** (a
+  single leading `/`, rejecting scheme-relative `//` and backslash `/\`
+  variants) and falls back to `/` for anything else. The OIDC code was never
+  exposed (the `redirect_uri` is the fixed config value); only the final landing
+  redirect was affected. (Security review SDK-F1 / B1-303.)
+
 ## [0.1.0-alpha.2] — 2026-07-22
 
 ### Fixed
@@ -196,7 +213,8 @@ contract from `alpha` to `v1` (see
 - **Tooling**: `road:install`, `road:doctor`, `road:whoami`, and
   `road:generate-dtos` (OpenAPI-contract codegen with a `--check` drift gate).
 
-[Unreleased]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.2...HEAD
+[Unreleased]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.3...HEAD
+[0.1.0-alpha.3]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.2...road-laravel-v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.1...road-laravel-v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha...road-laravel-v0.1.0-alpha.1
 [0.1.0-alpha]: https://github.com/B1Company/road/releases/tag/road-laravel-v0.1.0-alpha
