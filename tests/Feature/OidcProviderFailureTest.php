@@ -6,6 +6,7 @@ use B1Road\Laravel\Auth\AuthServer\OidcProvider;
 use B1Road\Laravel\Exceptions\RoadAuthnException;
 use B1Road\Laravel\Tests\Support\OidcFixture;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
@@ -28,6 +29,26 @@ beforeEach(function () {
 });
 
 /**
+ * A catch-all stub so an unstubbed URL fails loudly and deterministically
+ * instead of attempting a real connection (verified: without it, Guzzle rejects
+ * with a genuine network error, which makes the failure environment-dependent
+ * and can mask a changed URL as a transport bug). Mirrors the `'*'` guard in
+ * OidcFixture::fakeHttp(); 599 is a non-standard code no branch under test
+ * treats as meaningful.
+ *
+ * @return array<string,Closure>
+ */
+function strayRequestGuard(): array
+{
+    return [
+        '*' => fn (Request $request) => Http::response(
+            ['error' => 'unstubbed_url_in_test', 'url' => $request->url()],
+            599,
+        ),
+    ];
+}
+
+/**
  * Stub the Auth Server with a caller-supplied token-endpoint response, then
  * drive /login so the PKCE verifier + state land in the session.
  *
@@ -47,6 +68,7 @@ function primePkce(OidcFixture $fixture, mixed $tokenStub): array
         $fixture->issuer.'/.well-known/openid-configuration' => Http::response($fixture->discoveryDoc(), 200),
         $fixture->issuer.'/oauth/v2/keys' => Http::response($fixture->jwksDoc(), 200),
         $fixture->issuer.'/oauth/v2/token' => $tokenStub,
+        ...strayRequestGuard(),
     ]);
 
     $case = test();
@@ -115,6 +137,7 @@ it('raises oidc_refresh_failed when the refresh request cannot be sent', functio
     Http::fake([
         $fixture->issuer.'/.well-known/openid-configuration' => Http::response($fixture->discoveryDoc(), 200),
         $fixture->issuer.'/oauth/v2/token' => fn () => throw new ConnectionException('refresh unreachable'),
+        ...strayRequestGuard(),
     ]);
 
     try {
@@ -133,6 +156,7 @@ it('raises oidc_refresh_failed on a non-2xx refresh response', function () {
         $fixture->issuer.'/.well-known/openid-configuration' => Http::response($fixture->discoveryDoc(), 200),
         // The canonical case: the refresh token was revoked or expired.
         $fixture->issuer.'/oauth/v2/token' => Http::response(['error' => 'invalid_grant'], 401),
+        ...strayRequestGuard(),
     ]);
 
     try {
@@ -156,6 +180,7 @@ it('redirects to the app root on logout when the Auth Server has no end_session_
     Http::fake([
         $fixture->issuer.'/.well-known/openid-configuration' => Http::response($discovery, 200),
         $fixture->issuer.'/oauth/v2/keys' => Http::response($fixture->jwksDoc(), 200),
+        ...strayRequestGuard(),
     ]);
 
     // logout() reads and clears the PKCE session entry, so the request needs a

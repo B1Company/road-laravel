@@ -39,6 +39,10 @@ it('re-fetches the JWKS on refresh so a rotated key is picked up', function () {
         $fixture->issuer.'/oauth/v2/keys' => function () use (&$servedKeys) {
             return Http::response($servedKeys, 200);
         },
+        // Catch-all so an unstubbed URL fails deterministically instead of
+        // attempting a real connection (Guzzle otherwise rejects with a genuine
+        // network error, masking a changed URL as a transport bug).
+        '*' => Http::response(['error' => 'unstubbed_url_in_test'], 599),
     ]);
 
     $cache = app(JwksCache::class);
@@ -67,6 +71,10 @@ it('raises jwks_unreachable when the JWKS endpoint cannot be reached', function 
     Http::fake([
         $fixture->issuer.'/.well-known/openid-configuration' => Http::response($fixture->discoveryDoc(), 200),
         $fixture->issuer.'/oauth/v2/keys' => fn () => throw new ConnectionException('connection reset'),
+        // Catch-all so an unstubbed URL fails deterministically instead of
+        // attempting a real connection (Guzzle otherwise rejects with a genuine
+        // network error, masking a changed URL as a transport bug).
+        '*' => Http::response(['error' => 'unstubbed_url_in_test'], 599),
     ]);
 
     expect(fn () => app(JwksCache::class)->get())
@@ -92,6 +100,10 @@ it('raises jwks_fetch_failed when the JWKS endpoint returns a non-2xx', function
     Http::fake([
         $fixture->issuer.'/.well-known/openid-configuration' => Http::response($fixture->discoveryDoc(), 200),
         $fixture->issuer.'/oauth/v2/keys' => Http::response(['error' => 'boom'], 503),
+        // Catch-all so an unstubbed URL fails deterministically instead of
+        // attempting a real connection (Guzzle otherwise rejects with a genuine
+        // network error, masking a changed URL as a transport bug).
+        '*' => Http::response(['error' => 'unstubbed_url_in_test'], 599),
     ]);
 
     try {
@@ -111,6 +123,10 @@ it('raises jwks_invalid when the JWKS response has no keys array', function () {
         $fixture->issuer.'/.well-known/openid-configuration' => Http::response($fixture->discoveryDoc(), 200),
         // 200 OK, but not a key set — e.g. a proxy returning an HTML error page.
         $fixture->issuer.'/oauth/v2/keys' => Http::response(['not_keys' => []], 200),
+        // Catch-all so an unstubbed URL fails deterministically instead of
+        // attempting a real connection (Guzzle otherwise rejects with a genuine
+        // network error, masking a changed URL as a transport bug).
+        '*' => Http::response(['error' => 'unstubbed_url_in_test'], 599),
     ]);
 
     try {
