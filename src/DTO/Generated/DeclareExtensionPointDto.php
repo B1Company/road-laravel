@@ -10,16 +10,15 @@ namespace B1Road\Laravel\DTO\Generated;
 
 use Spatie\LaravelData\Data;
 
-final class AdminCreateRoleDto extends Data
+final class DeclareExtensionPointDto extends Data
 {
     public function __construct(
+        public string $key,
+        public string $type,
         public string $name,
-        public array $permissions,
-        public string $scopeId,
         public ?string $description = null,
-        public ?bool $isSystem = null,
-        public ?array $metadata = null,
-        public ?string $cloneFromRoleId = null,
+        public ?array $contract = null,
+        public ?float $version = null,
     ) {
     }
 }

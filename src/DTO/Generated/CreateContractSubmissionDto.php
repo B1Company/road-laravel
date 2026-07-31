@@ -10,11 +10,11 @@ namespace B1Road\Laravel\DTO\Generated;
 
 use Spatie\LaravelData\Data;
 
-final class CreateAdminUserDto extends Data
+final class CreateContractSubmissionDto extends Data
 {
     public function __construct(
-        public string $email,
-        public string $name,
+        public ?string $format = null,
+        public ?string $spec = null,
     ) {
     }
 }

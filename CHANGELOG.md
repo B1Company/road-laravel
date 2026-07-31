@@ -9,6 +9,29 @@ the surface may change between minor versions until the API graduates its
 contract from `alpha` to `v1` (see
 `docs/plans/done/14-sdk-publishing-and-versioning.md`).
 
+## [Unreleased]
+
+### Added
+
+- Regenerated the DTOs from a refreshed contract hub: 11 new Platform
+  Extensions v2 types, plus `appUrl` on `CreatePlatformDto` and
+  `UpdateOperationalDto`. The hub had drifted ~32 endpoints behind the API.
+
+### Removed
+
+- **`AdminCreateRoleDto`, `CreateAdminBuDto`, `CreateAdminUserDto`.** These were
+  generated from schemas orphaned in the API's Swagger document and describe
+  admin-only endpoints this package does not ship routes for, so no consumer
+  could reach them. They were never documented as public API. Covered by the
+  pre-1.0 surface clause above.
+
+### Fixed
+
+- The DTO generator no longer emits classes for schemas the contract does not
+  reference. Previously `road:generate-dtos` also emitted internal Platform
+  Bridge types into this published package, and threw outright on a placeholder
+  schema named `Object` (a PHP reserved word).
+
 ## [0.1.0-alpha.3] — 2026-07-28
 
 ### Security

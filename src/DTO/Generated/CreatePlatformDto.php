@@ -19,6 +19,7 @@ final class CreatePlatformDto extends Data
         public ?string $runbookUrl = null,
         public ?string $teamOwner = null,
         public ?string $webhookUrl = null,
+        public ?string $appUrl = null,
         public ?array $permissionTemplate = null,
         public ?array $roleTemplate = null,
         public ?ServiceUserBindingDto $serviceUserBinding = null,
