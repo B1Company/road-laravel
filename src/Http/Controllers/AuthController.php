@@ -43,10 +43,25 @@ final class AuthController extends Controller
      * some browsers normalize to `//evil`). Anything else falls back to the app
      * root. This is the sink — the one point where the value becomes a redirect
      * — so it holds no matter how `road.intended_url` was set.
+     *
+     * Control characters are rejected outright BEFORE the structural check
+     * (B1-329). Browsers strip tab, CR and LF from a URL before resolving it,
+     * so `/\t/evil.example` reaches the network as `//evil.example` — but the
+     * byte at index 1 is the tab, not the second slash, and a check that reads
+     * fixed positions never sees it. Rejecting rather than stripping is the
+     * safer half of that choice: a legitimate in-app path never contains a
+     * control byte, so there is nothing to salvage by normalizing.
      */
     private function safeRedirectTarget(mixed $intended): string
     {
         if (! is_string($intended) || $intended === '' || $intended[0] !== '/') {
+            return '/';
+        }
+
+        // Any C0 control byte, DEL, or whitespace the structural check below
+        // would index past. `\v` and `\f` are included because PHP's `\s` does
+        // not cover every byte a browser may discard.
+        if (preg_match('/[\x00-\x20\x7F]/', $intended) === 1) {
             return '/';
         }
 

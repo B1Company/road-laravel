@@ -66,6 +66,17 @@ it('falls back to the app root for an unsafe intended target', function (string 
     'scheme-relative //host' => ['//evil.example/phish'],
     'backslash-normalized //host' => ['/\\evil.example'],
     'non-http scheme' => ['javascript:alert(document.domain)'],
+    // B1-329. Browsers strip tab/CR/LF from a URL before resolving it, so each
+    // of these reaches the network as `//evil.example`. The old check read the
+    // byte at index 1 — which is the control character, not the second slash —
+    // so all three passed through untouched.
+    'tab between the slashes' => ["/\t/evil.example"],
+    'newline between the slashes' => ["/\n/evil.example"],
+    'carriage return between the slashes' => ["/\r/evil.example"],
+    'control char before a backslash' => ["/\t\\evil.example"],
+    // A CRLF in a Location header is also response-splitting territory, so it
+    // must never survive regardless of the redirect target.
+    'CRLF injection attempt' => ["/ok\r\nX-Injected: 1"],
 ]);
 
 it('preserves a safe same-origin path', function () {

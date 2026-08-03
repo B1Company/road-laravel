@@ -25,6 +25,17 @@ contract from `alpha` to `v1` (see
   could reach them. They were never documented as public API. Covered by the
   pre-1.0 surface clause above.
 
+### Security
+
+- **Open-redirect bypass in the OIDC callback (B1-329).** `safeRedirectTarget()`
+  rejected `//evil.example` and `/\evil.example` by inspecting the byte at index
+  1, so a control character *between* the slashes slipped past: `/\t/evil.example`
+  (likewise `\n`, `\r`) was returned unchanged. Browsers strip those bytes before
+  resolving a URL, so the victim landed on the attacker's host after a genuine
+  login — the exact CWE-601 the guard exists to prevent. Control bytes are now
+  rejected outright before the structural check; a legitimate in-app path never
+  contains one. This also stops a CRLF reaching the `Location` header.
+
 ### Fixed
 
 - The DTO generator no longer emits classes for schemas the contract does not
