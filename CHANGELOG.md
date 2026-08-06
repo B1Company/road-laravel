@@ -11,6 +11,21 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Security
+
+- **Raised the Guzzle floor to `^7.15.2` (B1-356).** The previous `^7.8`
+  admitted versions carrying six advisories, the notable one being
+  CVE-2026-69246 (high): a noncanonical host could bypass host-based checks.
+  That matters here because Guzzle backs Laravel's HTTP client, which this
+  package uses to fetch the Auth Server's JWKS — the trust anchor for token
+  signature verification — as well as for OIDC discovery and every Road API
+  call. Also covers CVE-2026-69245, CVE-2026-67353/67354/67355 and
+  CVE-2026-67339 (cookie scoping, `Referer` leakage, response-cookie DoS, and
+  `Proxy-Authorization` reaching origin servers).
+
+  Consumers resolving `^7.8` today already pick up a patched 7.15.x, so this
+  closes the door by constraint rather than leaving it to resolution order.
+
 ### Added
 
 - Regenerated the DTOs from a refreshed contract hub: 11 new Platform
