@@ -31,6 +31,14 @@ contract from `alpha` to `v1` (see
 - Regenerated the DTOs from a refreshed contract hub: 11 new Platform
   Extensions v2 types, plus `appUrl` on `CreatePlatformDto` and
   `UpdateOperationalDto`. The hub had drifted ~32 endpoints behind the API.
+- **Platform Bridge DTOs, for the first time (B1-467).** `CreateGrantDto`,
+  `CreateContractDto`, `PublishVersionDto`, `TokenExchangeRequestDto`,
+  `BridgeAuthorizeDto` and `BridgeAttemptDto`. They were never generated because
+  the contract hub's emitter stripped every `/bridge` path — a rule from when
+  Bridge was gated out of all SDK surfaces, which outlived both the decision to
+  publish Bridge and the decision to call it stable. `TokenExchangeRequestDto`
+  keeps snake_case properties on purpose: that route is RFC 8693, not the
+  camelCase `{ data }` contract.
 
 ### Removed
 
@@ -42,6 +50,12 @@ contract from `alpha` to `v1` (see
 
 ### Fixed
 
+- `SendTestEventDto::$businessUnitId` is nullable, matching the API. It was
+  required here while the API had already made it optional (B1-348), so the
+  typed path rejected the *supported* call — omitting the business unit and
+  letting Road resolve a subscriber itself. Caught by regenerating the hub, not
+  by a test: nothing compares this package to a contract the hub has not been
+  re-emitted from.
 - The DTO generator no longer emits classes for schemas the contract does not
   reference. Previously `road:generate-dtos` also emitted internal Platform
   Bridge types into this published package, and threw outright on a placeholder

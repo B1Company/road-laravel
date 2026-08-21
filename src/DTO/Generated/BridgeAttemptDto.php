@@ -10,11 +10,14 @@ namespace B1Road\Laravel\DTO\Generated;
 
 use Spatie\LaravelData\Data;
 
-final class SendTestEventDto extends Data
+final class BridgeAttemptDto extends Data
 {
     public function __construct(
-        public string $eventType,
-        public ?string $businessUnitId = null,
+        public string $brokeredToken,
+        public string $permission,
+        public bool $allowed,
+        public ?string $method = null,
+        public ?string $path = null,
     ) {
     }
 }

@@ -10,11 +10,10 @@ namespace B1Road\Laravel\DTO\Generated;
 
 use Spatie\LaravelData\Data;
 
-final class SendTestEventDto extends Data
+final class PublishVersionDto extends Data
 {
     public function __construct(
-        public string $eventType,
-        public ?string $businessUnitId = null,
+        public string $schemaSdl,
     ) {
     }
 }
