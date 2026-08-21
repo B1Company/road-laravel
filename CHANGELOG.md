@@ -40,6 +40,26 @@ contract from `alpha` to `v1` (see
   keeps snake_case properties on purpose: that route is RFC 8693, not the
   camelCase `{ data }` contract.
 
+### Changed
+
+- **Three API changes reach the committed contract for the first time**, all of
+  them already live on the server; nothing in this package changed for them, and
+  they are recorded here because the contract is where a consumer would go
+  looking. `GET /iam/authorization/scopes/lookup` no longer takes the
+  `X-Road-Scope-Id` header and answers `404` instead of `400` (it authorizes the
+  *resolved* scope now — the fix for a cross-tenant IDOR); and both
+  `DELETE /iam/authorization/scopes/{scopeId}` and
+  `DELETE …/scopes/{scopeId}/roles/{roleId}` answer `200` with cascade counts
+  instead of `204`.
+
+  Only the last one is reachable from this package, via
+  `RoleCollection::delete()`. It is unaffected — the transport treats `200` and
+  `204` alike and the in-memory test double already answered `200` — but
+  `delete()` still returns `void`, so **the count the API now returns is
+  discarded**. B1-449 surfaced it in `@b1-road/react` on the reasoning that
+  external integrators cannot fix it themselves; that reasoning applies here too,
+  and the PHP half is still open.
+
 ### Removed
 
 - **`AdminCreateRoleDto`, `CreateAdminBuDto`, `CreateAdminUserDto`.** These were
