@@ -28,6 +28,21 @@ contract from `alpha` to `v1` (see
 
 ### Added
 
+- **Typed webhook events for Platform Bridge and Platform Extensions
+  (B1-458).** `BridgeGrantCreated`, `BridgeGrantRevoked`,
+  `ExtensionInstallCreated` and `ExtensionInstallUninstalled`, with the
+  `BridgeGrantWebhookData` and `ExtensionInstallWebhookData` payloads.
+  `bridge.grant.*` and `extension.install.*` have been in the published
+  catalog (`ROAD_WEBHOOK_EVENT_TYPES`) since plan 55 WS2, so a partner could
+  already subscribe to them — but `RoadEventMap` mapped only the nine
+  `organization.*`, so the delivery arrived with no DTO to read it and fell
+  through to the untyped `RoadWebhookReceived`.
+
+  `BridgeGrantWebhookData` carries **no** `businessUnitId`, and that absence
+  is part of the contract rather than an omission: a grant is cross-platform,
+  and a business unit on the payload would route it through the BU fan-out to
+  every co-subscribed platform (B1-450).
+
 - Regenerated the DTOs from a refreshed contract hub: 11 new Platform
   Extensions v2 types, plus `appUrl` on `CreatePlatformDto` and
   `UpdateOperationalDto`. The hub had drifted ~32 endpoints behind the API.

@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use B1Road\Laravel\Http\Controllers\WebhookController;
+use B1Road\Laravel\Webhooks\Events\BridgeGrantCreated;
+use B1Road\Laravel\Webhooks\Events\ExtensionInstallUninstalled;
 use B1Road\Laravel\Webhooks\Events\MemberSuspended;
 use B1Road\Laravel\Webhooks\Events\RoadWebhookReceived;
 use B1Road\Laravel\Webhooks\RoadEventMap;
@@ -94,9 +96,27 @@ it('returns 200 for an unknown event, firing only the generic event', function (
 it('dispatches the right typed event for every event in the catalog', function (string $event) {
     Event::fake();
 
-    $data = str_contains($event, 'invitation')
-        ? ['businessUnitId' => 'bu_1', 'invitationId' => 'inv_1', 'email' => 'e@b1.app']
-        : ['businessUnitId' => 'bu_1', 'memberId' => 'm_1', 'userId' => 'u_1'];
+    $data = match (true) {
+        str_starts_with($event, 'bridge.grant.') => [
+            'providerPublicId' => 'plat_provider',
+            'subjectPlatformPublicId' => 'plat_subject',
+            'roleTemplateName' => 'Viewer',
+            'grantId' => 'asg_1',
+        ],
+        str_starts_with($event, 'extension.install.') => [
+            'extensionPublicId' => 'ext_1',
+            'installPublicId' => 'exti_1',
+            'businessUnitId' => 'bu_1',
+            'platformPublicId' => 'plat_host',
+            'grantedScopes' => ['Viewer'],
+        ],
+        str_contains($event, 'invitation') => [
+            'businessUnitId' => 'bu_1',
+            'invitationId' => 'inv_1',
+            'email' => 'e@b1.app',
+        ],
+        default => ['businessUnitId' => 'bu_1', 'memberId' => 'm_1', 'userId' => 'u_1'],
+    };
     if ($event === 'organization.member.role-changed') {
         $data['roleId'] = 'r_1';
         $data['action'] = 'assigned';
@@ -122,4 +142,68 @@ it('skips verification in non-production when verify is disabled', function () {
         ->assertOk();
 
     Event::assertDispatched(RoadWebhookReceived::class);
+});
+
+/**
+ * Dispatch alone only proves the map has an entry. These two pin the *values*,
+ * so renaming a field on either payload goes red instead of quietly hydrating
+ * a half-empty DTO (B1-458).
+ */
+it('decodes a bridge grant payload, and does not invent a business unit', function () {
+    Event::fake();
+
+    [$raw, $headers] = delivery([
+        'id' => 'evt_bridge',
+        'event' => 'bridge.grant.created',
+        'timestamp' => '2026-09-10T00:00:00Z',
+        'data' => [
+            'providerPublicId' => 'plat_provider',
+            'subjectPlatformPublicId' => 'plat_subject',
+            'roleTemplateName' => 'Viewer',
+            'grantId' => 'asg_1',
+        ],
+    ]);
+
+    $this->call('POST', '/road/webhooks', [], [], [], $headers, $raw)->assertOk();
+
+    Event::assertDispatched(BridgeGrantCreated::class, function (BridgeGrantCreated $e) {
+        expect($e->data->providerPublicId)->toBe('plat_provider');
+        expect($e->data->subjectPlatformPublicId)->toBe('plat_subject');
+        expect($e->data->roleTemplateName)->toBe('Viewer');
+        expect($e->data->grantId)->toBe('asg_1');
+        // A grant is cross-platform. A business unit here would route it
+        // through the BU fan-out to every co-subscribed platform (API-F4).
+        expect(property_exists($e->data, 'businessUnitId'))->toBeFalse();
+
+        return true;
+    });
+});
+
+it('decodes an extension install payload, with granted scopes empty on uninstall', function () {
+    Event::fake();
+
+    [$raw, $headers] = delivery([
+        'id' => 'evt_ext',
+        'event' => 'extension.install.uninstalled',
+        'timestamp' => '2026-09-10T00:00:00Z',
+        'data' => [
+            'extensionPublicId' => 'ext_1',
+            'installPublicId' => 'exti_1',
+            'businessUnitId' => 'bu_1',
+            'platformPublicId' => 'plat_host',
+            'grantedScopes' => [],
+        ],
+    ]);
+
+    $this->call('POST', '/road/webhooks', [], [], [], $headers, $raw)->assertOk();
+
+    Event::assertDispatched(ExtensionInstallUninstalled::class, function (ExtensionInstallUninstalled $e) {
+        expect($e->data->extensionPublicId)->toBe('ext_1');
+        expect($e->data->installPublicId)->toBe('exti_1');
+        expect($e->data->businessUnitId)->toBe('bu_1');
+        expect($e->data->platformPublicId)->toBe('plat_host');
+        expect($e->data->grantedScopes)->toBe([]);
+
+        return true;
+    });
 });

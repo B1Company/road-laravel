@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel\Webhooks;
 
+use B1Road\Laravel\Webhooks\Events\BridgeGrantCreated;
+use B1Road\Laravel\Webhooks\Events\BridgeGrantRevoked;
+use B1Road\Laravel\Webhooks\Events\ExtensionInstallCreated;
+use B1Road\Laravel\Webhooks\Events\ExtensionInstallUninstalled;
 use B1Road\Laravel\Webhooks\Events\InvitationAccepted;
 use B1Road\Laravel\Webhooks\Events\InvitationCancelled;
 use B1Road\Laravel\Webhooks\Events\InvitationCreated;
@@ -13,6 +17,8 @@ use B1Road\Laravel\Webhooks\Events\MemberReinstated;
 use B1Road\Laravel\Webhooks\Events\MemberRemoved;
 use B1Road\Laravel\Webhooks\Events\MemberRoleChanged;
 use B1Road\Laravel\Webhooks\Events\MemberSuspended;
+use B1Road\Laravel\Webhooks\Payloads\BridgeGrantWebhookData;
+use B1Road\Laravel\Webhooks\Payloads\ExtensionInstallWebhookData;
 use B1Road\Laravel\Webhooks\Payloads\InvitationWebhookData;
 use B1Road\Laravel\Webhooks\Payloads\MemberRoleChangedWebhookData;
 use B1Road\Laravel\Webhooks\Payloads\MemberWebhookData;
@@ -38,6 +44,16 @@ final class RoadEventMap
         'organization.member.reinstated' => [MemberReinstated::class, MemberWebhookData::class],
         'organization.member.removed' => [MemberRemoved::class, MemberWebhookData::class],
         'organization.member.role-changed' => [MemberRoleChanged::class, MemberRoleChangedWebhookData::class],
+
+        // Bridge and Extensions are public capabilities and their events have
+        // been in `ROAD_WEBHOOK_EVENT_TYPES` since plan 55 WS2 — a partner
+        // could already subscribe to them while this map knew only the nine
+        // `organization.*`, so the delivery arrived with no typed DTO to read
+        // it (B1-458).
+        'bridge.grant.created' => [BridgeGrantCreated::class, BridgeGrantWebhookData::class],
+        'bridge.grant.revoked' => [BridgeGrantRevoked::class, BridgeGrantWebhookData::class],
+        'extension.install.created' => [ExtensionInstallCreated::class, ExtensionInstallWebhookData::class],
+        'extension.install.uninstalled' => [ExtensionInstallUninstalled::class, ExtensionInstallWebhookData::class],
     ];
 
     /**
