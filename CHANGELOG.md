@@ -11,6 +11,23 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Security
+
+- **Refuses a hosted Eduzz Plat surface reached over plaintext `http` (B1-643).**
+  `http://api.plat.eduzz.com` used to pass as an unknown custom origin:
+  `Environments::surfaceOf()` compared whole origins, so a real Road host over
+  plaintext matched nothing, and every caller reads "matched nothing" as
+  "someone else's gateway, none of my business". `HttpTransport` and
+  `ProxyController` would then send bearer tokens to a real Road host in the
+  clear.
+
+  Recognition is by **host** now, and the match reports `secure`. `BootGuards`
+  refuses a hosted surface without TLS before any other check. `http://localhost`
+  still boots — it is nobody's hosted surface, and that is where the line sits.
+
+  `Environments::surfaceOf()` returns `['environment' => …, 'surface' => …,
+  'secure' => bool]` — a third key, if you were reading that array directly.
+
 ### Added
 
 - **`ROAD_ENVIRONMENT` now reaches production on its own (B1-635).**
