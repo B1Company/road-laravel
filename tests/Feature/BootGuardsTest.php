@@ -268,3 +268,35 @@ it('still boots a local environment that supplies its own API URL', function () 
 
     expect(Environments::apiUrl('local'))->toBeNull();
 });
+
+it('refuses a hosted Road API reached over plaintext http', function () {
+    // It used to pass as an unknown custom origin: origins were compared whole,
+    // so a real Road host over http matched nothing, and HttpTransport and
+    // ProxyController then sent bearer tokens in the clear. (CodeRabbit, #615.)
+    $bad = safeProdConfig();
+    $bad['road']['api']['base_url'] = 'http://api.plat.eduzz.com';
+
+    expect(fn () => BootGuards::assert(appInEnv('production'), configOf($bad)))
+        ->toThrow(RuntimeException::class, 'reached over plaintext http');
+});
+
+it('refuses a hosted Auth Server reached over plaintext http', function () {
+    $bad = safeProdConfig();
+    $bad['road']['auth_server']['issuer_url'] = 'http://auth.plat.eduzz.com';
+
+    expect(fn () => BootGuards::assert(appInEnv('production'), configOf($bad)))
+        ->toThrow(RuntimeException::class, 'reached over plaintext http');
+});
+
+it('still allows a plaintext host that is not Plat\'s', function () {
+    // http://localhost is how everyone develops, and it is nobody's hosted
+    // surface — the rule has to stay that narrow.
+    $ok = safeProdConfig();
+    $ok['road']['environment'] = 'local';
+    $ok['road']['api']['base_url'] = 'http://localhost:3000';
+    $ok['road']['auth_server']['issuer_url'] = 'http://localhost:8080';
+
+    BootGuards::assert(appInEnv('local'), configOf($ok));
+
+    expect(Environments::surfaceOf('http://localhost:3000'))->toBeNull();
+});

@@ -60,19 +60,30 @@ final class Environments
      * matches nothing — localhost, a tunnel, a preview deploy — is `null` rather
      * than a guess, so callers can stay quiet about setups they cannot judge.
      *
-     * @return array{environment: string, surface: string}|null
+     * Recognition is by HOST, and `secure` reports whether the URL reaches it
+     * over TLS. Comparing whole origins made `http://api.plat.eduzz.com` look
+     * like an unknown custom origin, which callers treat as someone's own
+     * gateway — and a BFF then sent bearer tokens to a real Road host in
+     * plaintext.
+     *
+     * @return array{environment: string, surface: string, secure: bool}|null
      */
     public static function surfaceOf(string $url): ?array
     {
-        $origin = self::origin($url);
-        if ($origin === null) {
+        $parsed = self::parse($url);
+        if ($parsed === null) {
             return null;
         }
 
         foreach (self::HOSTED as $name => $surfaces) {
             foreach ($surfaces as $surface => $surfaceUrl) {
-                if (self::origin($surfaceUrl) === $origin) {
-                    return ['environment' => $name, 'surface' => $surface];
+                $known = self::parse($surfaceUrl);
+                if ($known !== null && $known['host'] === $parsed['host']) {
+                    return [
+                        'environment' => $name,
+                        'surface' => $surface,
+                        'secure' => $parsed['scheme'] === 'https',
+                    ];
                 }
             }
         }
@@ -101,10 +112,16 @@ final class Environments
     }
 
     /**
-     * `scheme://host[:port]`, lowercased, with the scheme's default port
-     * dropped — what a URL parser would call the origin.
+     * `['scheme' => …, 'host' => …]`, lowercased, with the scheme's default
+     * port dropped — or null for anything that is not an http(s) URL.
+     *
+     * The two are kept apart so a caller can tell "unknown host" from "known
+     * host, wrong scheme". Folding them into one origin string conflated those,
+     * and only one of them is safe to send a token to.
+     *
+     * @return array{scheme: string, host: string}|null
      */
-    private static function origin(string $url): ?string
+    private static function parse(string $url): ?array
     {
         $parts = parse_url(trim($url));
         if ($parts === false || ! isset($parts['scheme'], $parts['host'])) {
@@ -116,12 +133,12 @@ final class Environments
             return null;
         }
 
-        $origin = $scheme.'://'.strtolower($parts['host']);
+        $host = strtolower($parts['host']);
         $default = $scheme === 'https' ? 443 : 80;
         if (isset($parts['port']) && $parts['port'] !== $default) {
-            $origin .= ':'.$parts['port'];
+            $host .= ':'.$parts['port'];
         }
 
-        return $origin;
+        return ['scheme' => $scheme, 'host' => $host];
     }
 }

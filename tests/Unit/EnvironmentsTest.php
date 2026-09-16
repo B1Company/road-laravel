@@ -38,7 +38,7 @@ it('distinguishes surfaces, so an API URL is not an issuer', function () {
     expect(Environments::of('https://api.plat.eduzz.com', 'auth_server'))->toBeNull()
         ->and(Environments::of('https://auth.plat.eduzz.com', 'auth_server'))->toBe('production')
         ->and(Environments::surfaceOf('https://api.plat.eduzz.com'))
-        ->toBe(['environment' => 'production', 'surface' => 'api']);
+        ->toBe(['environment' => 'production', 'surface' => 'api', 'secure' => true]);
 });
 
 it('says nothing about a host it does not know', function () {

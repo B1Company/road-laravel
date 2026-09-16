@@ -141,6 +141,33 @@ final class BootGuards
             );
         }
 
+        // A hosted Road surface reached without TLS. Checked before the slot
+        // comparison, because "this crosses the network in the clear" outranks
+        // "this is in the wrong field".
+        //
+        // It used to pass silently: `Environments::surfaceOf()` compared whole
+        // origins, so `http://api.plat.eduzz.com` matched nothing and was read
+        // as an unknown custom origin — and `HttpTransport` and `ProxyController`
+        // then sent bearer tokens to a real Road host in plaintext.
+        // (CodeRabbit, #615.)
+        foreach ([
+            'ROAD_API_BASE_URL' => $baseUrl,
+            'AUTH_SERVER_ISSUER_URL' => $issuerUrl,
+        ] as $env => $url) {
+            if ($url === '') {
+                continue;
+            }
+            $found = Environments::surfaceOf($url);
+            if ($found !== null && ! $found['secure']) {
+                throw new RuntimeException(
+                    "Road SDK configuration is unsafe:\n  - {$env} ('{$url}') is Eduzz Plat's "
+                    ."{$found['surface']} for {$found['environment']}, reached over plaintext http. "
+                    .'Tokens would cross the network in the clear. Use '
+                    .Environments::HOSTED[$found['environment']][$found['surface']]
+                );
+            }
+        }
+
         // A Road URL in the wrong slot, both directions. An API base in the
         // issuer slot dies at OIDC discovery with a 404; an Auth Server URL in
         // the API slot makes every proxied request 404 against a host with no
