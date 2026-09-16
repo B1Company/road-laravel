@@ -107,9 +107,18 @@ final class InstallCommand extends Command
                 : "Enter to accept the hosted {$environment} API. Change it only if you front Plat with your own gateway.",
         );
 
+        // Write the URL ONLY when it differs from the hosted default. Stamping
+        // the hosted URL in would silently defeat the environment switch: a
+        // later `ROAD_ENVIRONMENT=production` is a no-op while
+        // `ROAD_API_BASE_URL` still names sandbox, because an explicit value
+        // wins over the derived one in config/road.php. Pressing enter at a
+        // pre-filled prompt returns that default, so this is the common path,
+        // not the corner case.
+        $customApi = $answeredApi !== '' && $answeredApi !== $hostedApi ? $answeredApi : '';
+
         $values = [
             'ROAD_ENVIRONMENT' => $environment,
-            'ROAD_API_BASE_URL' => $answeredApi !== '' ? $answeredApi : (string) $hostedApi,
+            'ROAD_API_BASE_URL' => $customApi,
             'AUTH_SERVER_ISSUER_URL' => text(
                 label: 'Auth Server issuer URL',
                 required: true,

@@ -10,12 +10,22 @@ use Throwable;
 abstract class RoadException extends RuntimeException
 {
     /**
-     * Base for the canonical docs links every Road error carries. The code's
-     * snake form is kebab-cased into the slug (`permission_denied` →
-     * `permission-denied`), matching the Road error catalog and the example
-     * in `standards/SDK_DX_BAR.md`.
+     * Fallback base for the docs link an error carries when the API's own
+     * problem body did not supply a `type`. The code's snake form is kebab-cased
+     * into the slug (`permission_denied` → `permission-denied`), matching the
+     * Road error catalog and the example in `standards/SDK_DX_BAR.md`.
+     *
+     * The previous value named the bare domain Road served before the
+     * plat.eduzz.com cutover — and one the API never emitted anyway, since it
+     * roots its `type` at the API origin rather than the bare domain. So the
+     * fallback pointed somewhere that neither resolved nor matched the real
+     * thing. See the CHANGELOG entry for the old value.
+     *
+     * ⚠️ Treat any of these as an identifier to compare, not a link to follow.
+     * The origin differs per environment, and deployments today still emit a
+     * retired one (B1-637). `errorCode` is the stable thing to branch on.
      */
-    private const DOCS_BASE = 'https://road.b1.app/errors';
+    private const DOCS_BASE = 'https://api.plat.eduzz.com/errors';
 
     /**
      * @param  string  $errorCode  Stable machine-readable code (e.g. `unauthenticated`).

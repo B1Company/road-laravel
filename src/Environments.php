@@ -48,15 +48,21 @@ final class Environments
     }
 
     /**
-     * Which hosted environment a URL belongs to, or `null` when it belongs to
-     * none of them.
+     * Which hosted surface a URL is, or `null` when it is none of them.
+     *
+     * Returns the SURFACE as well as the environment, because "a Road URL from
+     * the right environment" is not "the right Road URL". Pasting the API base
+     * into `AUTH_SERVER_ISSUER_URL` is a common typo, and an environment-only
+     * check calls it fine and lets it die at OIDC discovery with a 404.
      *
      * Compared on ORIGIN, not by substring: `https://api.plat.eduzz.com.evil.tld`
      * contains a production hostname and is somebody else's host. A URL that
      * matches nothing — localhost, a tunnel, a preview deploy — is `null` rather
      * than a guess, so callers can stay quiet about setups they cannot judge.
+     *
+     * @return array{environment: string, surface: string}|null
      */
-    public static function of(string $url): ?string
+    public static function surfaceOf(string $url): ?array
     {
         $origin = self::origin($url);
         if ($origin === null) {
@@ -64,14 +70,34 @@ final class Environments
         }
 
         foreach (self::HOSTED as $name => $surfaces) {
-            foreach ($surfaces as $surface) {
-                if (self::origin($surface) === $origin) {
-                    return $name;
+            foreach ($surfaces as $surface => $surfaceUrl) {
+                if (self::origin($surfaceUrl) === $origin) {
+                    return ['environment' => $name, 'surface' => $surface];
                 }
             }
         }
 
         return null;
+    }
+
+    /**
+     * Which hosted environment a URL belongs to, or `null` when it belongs to
+     * none of them.
+     *
+     * Pass `$surface` to also require that it is the right KIND of URL — an
+     * `auth_server`, not just any Road host.
+     */
+    public static function of(string $url, ?string $surface = null): ?string
+    {
+        $match = self::surfaceOf($url);
+        if ($match === null) {
+            return null;
+        }
+        if ($surface !== null && $match['surface'] !== $surface) {
+            return null;
+        }
+
+        return $match['environment'];
     }
 
     /**

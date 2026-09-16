@@ -53,19 +53,19 @@ it('falls back to the legacy {error:{code,message}} envelope the fakes emit', fu
         'code' => 'not_found',
         'message' => 'No such BU',
         'requestId' => 'req_legacy',
-        'docs' => 'https://road.b1.app/errors/custom',
+        'docs' => 'https://api.plat.eduzz.com/errors/custom',
     ]]);
 
     expect($error)->toBeInstanceOf(RoadNotFoundException::class);
     expect($error->getMessage())->toBe('No such BU');
     expect($error->requestId())->toBe('req_legacy');
-    expect($error->docsUrl())->toBe('https://road.b1.app/errors/custom');
+    expect($error->docsUrl())->toBe('https://api.plat.eduzz.com/errors/custom');
 });
 
 it('self-documents with a kebab-cased docs URL when none is supplied', function () {
     $error = ErrorMapper::map(403, problem(403, 'permission-denied', 'Permission Denied', 'nope'));
 
-    expect($error->docsUrl())->toBe('https://road.b1.app/errors/permission-denied');
+    expect($error->docsUrl())->toBe('https://api.plat.eduzz.com/errors/permission-denied');
 });
 
 it('builds fieldErrors from the 7807 errors[] array on a validation error', function () {

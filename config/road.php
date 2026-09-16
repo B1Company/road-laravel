@@ -16,9 +16,14 @@ return [
     | hosted by Eduzz Plat, so ROAD_API_BASE_URL below defaults from whichever
     | you name. What does NOT carry over is credentials — the two are separate
     | instances, and a client registered in one does not exist in the other.
+    |
+    | `ROAD_ENV` is accepted as a fallback because that is the name the Node
+    | SDKs and the Road MCP use, and it is the name the published guide prints.
+    | A partner running Laravel beside a Node service should not have to know
+    | that this one package spells it differently.
     */
 
-    'environment' => env('ROAD_ENVIRONMENT', 'sandbox'),
+    'environment' => env('ROAD_ENVIRONMENT', env('ROAD_ENV', 'sandbox')),
 
     'api' => [
         /*
@@ -27,7 +32,9 @@ return [
         | set it when ROAD_ENVIRONMENT=local, which Plat does not host.
         */
         'base_url' => env('ROAD_API_BASE_URL')
-            ?: \B1Road\Laravel\Environments::apiUrl(env('ROAD_ENVIRONMENT', 'sandbox')),
+            ?: \B1Road\Laravel\Environments::apiUrl(
+                env('ROAD_ENVIRONMENT', env('ROAD_ENV', 'sandbox'))
+            ),
         'version' => env('ROAD_API_VERSION', 'alpha'),
         'timeout' => (int) env('ROAD_API_TIMEOUT', 10),
         'jwks_ttl' => (int) env('ROAD_API_JWKS_TTL', 600),

@@ -163,3 +163,40 @@ it('does not mistake a lookalike host for a known environment', function () {
 
     expect(B1Road\Laravel\Environments::of('https://auth.plat.eduzz.com.evil.tld'))->toBeNull();
 });
+
+it('checks the Road environment even outside APP_ENV=production', function () {
+    // The other guards are production-safety checks: a memory session driver is
+    // fine while you develop. Mixing Plat environments never is — APP_ENV=staging
+    // with ROAD_ENVIRONMENT=production is exactly the deploy that most needs
+    // telling, and the early return used to skip it there.
+    $bad = safeProdConfig();
+    $bad['road']['auth_server']['issuer_url'] = 'https://auth.road-sandbox.b1.app';
+
+    expect(fn () => BootGuards::assert(appInEnv('staging'), configOf($bad)))
+        ->toThrow(RuntimeException::class, "is sandbox's");
+});
+
+it('still skips the production-only guards outside production', function () {
+    // The counter-case that keeps the test above honest: making the Road-env
+    // check unconditional must not drag the rest along. A local dev app with an
+    // array session driver and no client secret still boots.
+    $dev = safeProdConfig();
+    $dev['session']['driver'] = 'array';
+    $dev['road']['auth_server']['client_secret'] = '';
+
+    BootGuards::assert(appInEnv('local'), configOf($dev));
+
+    expect(B1Road\Laravel\Environments::of($dev['road']['api']['base_url']))
+        ->toBe('production');
+});
+
+it('refuses the API URL pasted into the issuer slot', function () {
+    // Right environment, wrong KIND of URL. An environment-only check calls this
+    // fine and it dies later at OIDC discovery with a 404 naming neither
+    // variable.
+    $bad = safeProdConfig();
+    $bad['road']['auth_server']['issuer_url'] = 'https://api.plat.eduzz.com';
+
+    expect(fn () => BootGuards::assert(appInEnv('production'), configOf($bad)))
+        ->toThrow(RuntimeException::class, "is Eduzz Plat's api URL for production, not its Auth Server");
+});

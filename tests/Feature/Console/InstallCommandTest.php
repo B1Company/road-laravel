@@ -61,8 +61,12 @@ it('the interactive wizard writes the answered values + derives the redirect URI
         ->assertExitCode(0);
 
     $env = File::get(base_path('.env'));
-    expect($env)->toContain('ROAD_API_BASE_URL=https://api.road-sandbox.b1.app');
+    // The answer equalled the hosted default, so the URL is NOT written: an
+    // explicit ROAD_API_BASE_URL would win over the derived one and silently
+    // defeat a later ROAD_ENVIRONMENT flip.
     expect($env)->toContain('ROAD_ENVIRONMENT=sandbox');
+    expect($env)->toContain('ROAD_API_BASE_URL=');
+    expect($env)->not->toContain('ROAD_API_BASE_URL=https://');
     expect($env)->toContain('AUTH_SERVER_ISSUER_URL=https://issuer.test');
     expect($env)->toContain('AUTH_SERVER_CLIENT_SECRET=super-secret');
     // An existing key is UPDATED in place, not duplicated.
@@ -122,8 +126,38 @@ it('defaults the API base URL from the chosen environment', function () {
 
     $env = File::get(base_path('.env'));
     expect($env)->toContain('ROAD_ENVIRONMENT=production');
-    expect($env)->toContain('ROAD_API_BASE_URL=https://api.plat.eduzz.com');
-    // The counter-assertion that makes the line above mean something: a wizard
-    // that ignored the choice would have written the sandbox host here.
+    // Blank on purpose. config/road.php derives the URL from the environment,
+    // so writing it here would pin the app to production even after someone
+    // flipped ROAD_ENVIRONMENT back — and pin it to SANDBOX in the far more
+    // common direction, which is how the wizard used to defeat its own switch.
+    expect($env)->toContain('ROAD_API_BASE_URL=');
+    expect($env)->not->toContain('ROAD_API_BASE_URL=https://');
     expect($env)->not->toContain('road-sandbox');
+
+    // And the environment that .env names does resolve to the production API.
+    expect(B1Road\Laravel\Environments::apiUrl('production'))
+        ->toBe('https://api.plat.eduzz.com');
+});
+
+it('writes the URL when the answer is NOT the hosted default', function () {
+    // The escape hatch: an app behind its own gateway in front of Plat. Here an
+    // explicit ROAD_API_BASE_URL is the point, and it must survive.
+    File::put(base_path('.env'), "APP_NAME=Test\n");
+    config(['app.url' => 'https://my-app.test']);
+
+    $this->artisan('road:install')
+        ->expectsChoice('Which Eduzz Plat environment?', 'production', [
+            'sandbox' => 'Sandbox — register, break things, validate here first',
+            'production' => 'Production — live data',
+            'local' => 'Local — your own stack (you will supply the URL)',
+        ])
+        ->expectsQuestion('Road API base URL', 'https://road-gateway.acme.example')
+        ->expectsQuestion('Auth Server issuer URL', 'https://auth.plat.eduzz.com')
+        ->expectsQuestion('Auth Server client ID', 'cid')
+        ->expectsQuestion('Auth Server client secret', 'sec')
+        ->expectsConfirmation('Run `road:doctor` now to verify the wiring?', 'no')
+        ->assertExitCode(0);
+
+    expect(File::get(base_path('.env')))
+        ->toContain('ROAD_API_BASE_URL=https://road-gateway.acme.example');
 });
