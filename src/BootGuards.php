@@ -22,6 +22,9 @@ use RuntimeException;
  */
 final class BootGuards
 {
+    /** Every value `ROAD_ENVIRONMENT` may take. `local` is hosted by nobody. */
+    private const ENVIRONMENTS = ['production', 'sandbox', 'local'];
+
     public static function assert(Application $app, ConfigRepository $config): void
     {
         // Runs in EVERY app environment, unlike the guards below.
@@ -39,13 +42,6 @@ final class BootGuards
         }
 
         $problems = [];
-
-        // A scheme-less base URL means every outbound Road call resolves wrong
-        // (Guzzle can't build the request) — a silent 500 on the first API call.
-        $baseUrl = (string) $config->get('road.api.base_url', '');
-        if ($baseUrl !== '' && ! preg_match('#^https?://#', $baseUrl)) {
-            $problems[] = "ROAD_API_BASE_URL ('{$baseUrl}') has no http(s):// scheme.";
-        }
 
         // OIDC login can't work without client credentials; the auth routes are
         // always mounted, so missing creds means a broken login in production.
@@ -105,6 +101,20 @@ final class BootGuards
         $baseUrl = (string) $config->get('road.api.base_url', '');
         $issuerUrl = (string) $config->get('road.auth_server.issuer_url', '');
 
+        // A ROAD_ENVIRONMENT nobody supports. `prodution` resolves to no hosted
+        // URL, which the next check usually catches — but not when both URLs are
+        // set to custom origins, and then the typo boots. Named first because
+        // every message below would otherwise describe a consequence of it.
+        if (! in_array($declared, self::ENVIRONMENTS, true)) {
+            throw new RuntimeException(
+                "Road SDK configuration is unsafe:\n  - ROAD_ENVIRONMENT is '{$declared}', which is not a "
+                .'Road environment. Use '.implode(', ', array_map(
+                    static fn (string $e): string => "'{$e}'",
+                    self::ENVIRONMENTS
+                )).'.'
+            );
+        }
+
         // No API URL at all. `Environments::apiUrl()` returns null for an
         // environment Plat does not host — `local` — so config/road.php resolves
         // this to an empty string and the app used to boot and fail on its first
@@ -116,6 +126,18 @@ final class BootGuards
                 "Road SDK configuration is unsafe:\n  - no Road API base URL. ROAD_ENVIRONMENT is "
                 ."'{$declared}', which Eduzz Plat does not host — only '{$known}' resolve on their own. "
                 .'Set ROAD_API_BASE_URL to the stack you are pointing at.'
+            );
+        }
+
+        // A scheme-less base URL means every outbound Road call resolves wrong
+        // (Guzzle can't build the request). Checked HERE rather than with the
+        // production-only guards below, because `ROAD_API_BASE_URL=localhost:3000`
+        // in a local app passed everything and then failed at the first request
+        // with a RoadNetworkException naming nothing. (CodeRabbit, #613.)
+        if (! preg_match('#^https?://#', $baseUrl)) {
+            throw new RuntimeException(
+                "Road SDK configuration is unsafe:\n  - ROAD_API_BASE_URL ('{$baseUrl}') has no "
+                .'http(s):// scheme.'
             );
         }
 

@@ -162,3 +162,30 @@ it('writes the URL when the answer is NOT the hosted default', function () {
     expect(File::get(base_path('.env')))
         ->toContain('ROAD_API_BASE_URL=https://road-gateway.acme.example');
 });
+
+it('does not clobber an existing ROAD_ENV with a sandbox default', function () {
+    // .env already says production through the alias. Appending
+    // ROAD_ENVIRONMENT=sandbox beside it would WIN — config/road.php gives the
+    // canonical name precedence — and silently move a production install to
+    // sandbox, with the blank ROAD_API_BASE_URL then resolving to the sandbox
+    // API. (CodeRabbit, #613.)
+    File::put(base_path('.env'), "APP_NAME=Test\nROAD_ENV=production\n");
+
+    $this->artisan('road:install', ['--no-interaction' => true])
+        ->assertExitCode(0);
+
+    $env = File::get(base_path('.env'));
+    expect($env)->toContain('ROAD_ENV=production');
+    expect($env)->not->toContain('ROAD_ENVIRONMENT=');
+});
+
+it('still stubs the environment when .env names neither key', function () {
+    // The pairing that gives the test above teeth: a fresh .env must still get
+    // an environment, or the stub stops doing its job entirely.
+    File::put(base_path('.env'), "APP_NAME=Test\n");
+
+    $this->artisan('road:install', ['--no-interaction' => true])
+        ->assertExitCode(0);
+
+    expect(File::get(base_path('.env')))->toContain('ROAD_ENVIRONMENT=sandbox');
+});

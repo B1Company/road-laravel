@@ -204,6 +204,14 @@ final class InstallCommand extends Command
         }
 
         $contents = (string) file_get_contents($envPath);
+
+        // `ROAD_ENV` is the alias config/road.php accepts, and an .env that uses
+        // it already answers this question. Appending `ROAD_ENVIRONMENT=sandbox`
+        // beside an existing `ROAD_ENV=production` would silently WIN — Laravel
+        // gives the canonical name precedence — and quietly move a production
+        // install to sandbox. (CodeRabbit, #613.)
+        $hasEnvironment = preg_match('/^ROAD_ENV(IRONMENT)?=/m', $contents) === 1;
+
         $additions = [
             // The environment, not the URL, is the knob. `config/road.php`
             // derives the API base from it, so going live is this one line —
@@ -213,7 +221,7 @@ final class InstallCommand extends Command
             // This used to stub a `ROAD_API_BASE_URL` naming a
             // hostname retired at the plat.eduzz.com cutover, which every
             // non-interactive install has been writing into .env since.
-            'ROAD_ENVIRONMENT' => 'sandbox',
+            ...($hasEnvironment ? [] : ['ROAD_ENVIRONMENT' => 'sandbox']),
             'ROAD_API_BASE_URL' => '',
             'ROAD_API_VERSION' => 'alpha',
             'AUTH_SERVER_ISSUER_URL' => '',

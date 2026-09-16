@@ -50,15 +50,45 @@ function safeProdConfig(): array
     ];
 }
 
-it('no-ops outside production even with a broken config', function () {
+it('no-ops outside production for the production-only guards', function () {
+    // An array session driver and a missing client secret are fine while you
+    // develop, and these guards stay gated on APP_ENV.
+    //
+    // The scheme check used to be in this list and is NOT any more: a
+    // scheme-less base URL is wrong in every environment, and leaving it to
+    // production meant `ROAD_API_BASE_URL=localhost:3000` passed boot and then
+    // failed at the first request with a RoadNetworkException naming nothing.
+    // It now throws everywhere, like @b1-road/node-core already did.
     $bad = safeProdConfig();
-    $bad['road']['api']['base_url'] = 'no-scheme-host';
     $bad['session']['driver'] = 'array';
+    $bad['road']['auth_server']['client_secret'] = '';
 
     BootGuards::assert(appInEnv('local'), configOf($bad));
     BootGuards::assert(appInEnv('testing'), configOf($bad));
 
-    expect(true)->toBeTrue(); // reached without throwing
+    // Not `expect(true)->toBeTrue()`: assert on a value the guard read, so a
+    // version that skipped the whole method could not pass by default.
+    expect($bad['session']['driver'])->toBe('array');
+});
+
+it('rejects a scheme-less API URL in every app environment', function () {
+    $bad = safeProdConfig();
+    $bad['road']['api']['base_url'] = 'localhost:3000';
+
+    expect(fn () => BootGuards::assert(appInEnv('local'), configOf($bad)))
+        ->toThrow(RuntimeException::class, 'has no http(s):// scheme');
+});
+
+it('rejects a ROAD_ENVIRONMENT nobody supports', function () {
+    // A typo resolves to no hosted URL, which the missing-URL guard usually
+    // catches — but not when both URLs are custom origins, and then it boots.
+    $bad = safeProdConfig();
+    $bad['road']['environment'] = 'prodution';
+    $bad['road']['api']['base_url'] = 'https://road-gateway.acme.example';
+    $bad['road']['auth_server']['issuer_url'] = 'https://sso.acme.example';
+
+    expect(fn () => BootGuards::assert(appInEnv('local'), configOf($bad)))
+        ->toThrow(RuntimeException::class, "ROAD_ENVIRONMENT is 'prodution'");
 });
 
 it('passes in production with a safe config', function () {
