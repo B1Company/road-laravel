@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel\Console;
 
+use B1Road\Laravel\Environments;
 use Illuminate\Console\Command;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\password;
+use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 /**
@@ -76,13 +78,38 @@ final class InstallCommand extends Command
         $this->newLine();
         $this->info('Let\'s wire Road into your .env. Get these from your Road Dev Portal client.');
 
+        // Ask which instance FIRST: it decides the API URL default below, and
+        // asking for a URL before asking which environment is what made people
+        // paste a sandbox host into a production .env.
+        // Cast: Laravel Prompts types select() as int|string because option keys
+        // may be ints. Ours are strings by construction.
+        $environment = (string) select(
+            label: 'Which Eduzz Plat environment?',
+            options: [
+                'sandbox' => 'Sandbox — register, break things, validate here first',
+                'production' => 'Production — live data',
+                'local' => 'Local — your own stack (you will supply the URL)',
+            ],
+            default: 'sandbox',
+        );
+
+        // Required only where there is nothing to fall back to. For a hosted
+        // environment an empty answer means "use the hosted URL", so the common
+        // path is press-enter and the URL is never typed — which is also the
+        // path that cannot be mistyped.
+        $hostedApi = Environments::apiUrl($environment);
+        $answeredApi = text(
+            label: 'Road API base URL',
+            default: $hostedApi ?? '',
+            required: $hostedApi === null,
+            hint: $hostedApi === null
+                ? 'No hosted default for a local stack — give the URL your stack serves.'
+                : "Enter to accept the hosted {$environment} API. Change it only if you front Plat with your own gateway.",
+        );
+
         $values = [
-            'ROAD_API_BASE_URL' => text(
-                label: 'Road API base URL',
-                default: 'https://api.road-sandbox.b1.app',
-                required: true,
-                hint: 'The sandbox default is shown; the portal value wins.',
-            ),
+            'ROAD_ENVIRONMENT' => $environment,
+            'ROAD_API_BASE_URL' => $answeredApi !== '' ? $answeredApi : (string) $hostedApi,
             'AUTH_SERVER_ISSUER_URL' => text(
                 label: 'Auth Server issuer URL',
                 required: true,
@@ -169,7 +196,16 @@ final class InstallCommand extends Command
 
         $contents = (string) file_get_contents($envPath);
         $additions = [
-            'ROAD_API_BASE_URL' => 'https://api.road.b1.app',
+            // The environment, not the URL, is the knob. `config/road.php`
+            // derives the API base from it, so going live is this one line —
+            // and an empty ROAD_API_BASE_URL falls through to that default
+            // rather than overriding it with a stale host.
+            //
+            // This used to stub a `ROAD_API_BASE_URL` naming a
+            // hostname retired at the plat.eduzz.com cutover, which every
+            // non-interactive install has been writing into .env since.
+            'ROAD_ENVIRONMENT' => 'sandbox',
+            'ROAD_API_BASE_URL' => '',
             'ROAD_API_VERSION' => 'alpha',
             'AUTH_SERVER_ISSUER_URL' => '',
             'AUTH_SERVER_AUDIENCE' => '',

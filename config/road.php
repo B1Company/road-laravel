@@ -11,12 +11,23 @@ return [
     | Logical name of the Road environment this app talks to. Used to pick
     | sane defaults for API URLs and for diagnostics in road:doctor.
     | Allowed: 'production' | 'sandbox' | 'local'.
+    |
+    | Going live is this one variable: 'sandbox' and 'production' are both
+    | hosted by Eduzz Plat, so ROAD_API_BASE_URL below defaults from whichever
+    | you name. What does NOT carry over is credentials — the two are separate
+    | instances, and a client registered in one does not exist in the other.
     */
 
     'environment' => env('ROAD_ENVIRONMENT', 'sandbox'),
 
     'api' => [
-        'base_url' => env('ROAD_API_BASE_URL'),
+        /*
+        | Defaults to the hosted URL for 'environment'. Set it explicitly to
+        | point at a local stack, a tunnel or your own gateway — and you must
+        | set it when ROAD_ENVIRONMENT=local, which Plat does not host.
+        */
+        'base_url' => env('ROAD_API_BASE_URL')
+            ?: \B1Road\Laravel\Environments::apiUrl(env('ROAD_ENVIRONMENT', 'sandbox')),
         'version' => env('ROAD_API_VERSION', 'alpha'),
         'timeout' => (int) env('ROAD_API_TIMEOUT', 10),
         'jwks_ttl' => (int) env('ROAD_API_JWKS_TTL', 600),

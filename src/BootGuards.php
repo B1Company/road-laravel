@@ -37,6 +37,33 @@ final class BootGuards
             $problems[] = "ROAD_API_BASE_URL ('{$baseUrl}') has no http(s):// scheme.";
         }
 
+        // The two halves must name the same Road instance.
+        //
+        // Mirrors @b1-road/node-core's `assertOneEnvironment`, and exists for
+        // the same reason: now that 'production' resolves to a hosted API on
+        // its own, an app can boot green while holding sandbox credentials and
+        // only fail at the first sign-in, with an OIDC error naming a client id
+        // that reads as "our login is broken".
+        //
+        // Silent whenever it cannot judge — localhost, a tunnel or a
+        // self-hosted Auth Server matches no known origin, and a guard that
+        // guesses about setups it does not recognise is a guard people disable.
+        $declared = (string) $config->get('road.environment', '');
+        $issuerUrl = (string) $config->get('road.auth_server.issuer_url', '');
+        foreach ([
+            'ROAD_API_BASE_URL' => $baseUrl,
+            'AUTH_SERVER_ISSUER_URL' => $issuerUrl,
+        ] as $env => $url) {
+            if ($url === '') {
+                continue;
+            }
+            $belongs = Environments::of($url);
+            if ($belongs !== null && $belongs !== $declared) {
+                $problems[] = "ROAD_ENVIRONMENT is '{$declared}' but {$env} ('{$url}') is {$belongs}'s — "
+                    .'sandbox and production are separate instances with separate credentials, so this cannot sign anyone in.';
+            }
+        }
+
         // OIDC login can't work without client credentials; the auth routes are
         // always mounted, so missing creds means a broken login in production.
         foreach ([

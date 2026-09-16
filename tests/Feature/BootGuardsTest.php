@@ -33,9 +33,13 @@ function safeProdConfig(): array
 {
     return [
         'road' => [
-            'api' => ['base_url' => 'https://api.road.b1.app'],
+            // Was api/auth.example.com — hostnames retired at the
+            // plat.eduzz.com cutover, and therefore in no environment table, so
+            // the cross-environment guard could never have fired on them.
+            'environment' => 'production',
+            'api' => ['base_url' => 'https://api.plat.eduzz.com'],
             'auth_server' => [
-                'issuer_url' => 'https://auth.road.b1.app',
+                'issuer_url' => 'https://auth.plat.eduzz.com',
                 'client_id' => 'cid',
                 'client_secret' => 'sec',
             ],
@@ -63,7 +67,7 @@ it('passes in production with a safe config', function () {
 
 it('throws in production on a scheme-less base URL', function () {
     $bad = safeProdConfig();
-    $bad['road']['api']['base_url'] = 'api.road.b1.app';
+    $bad['road']['api']['base_url'] = 'api.plat.eduzz.com';
 
     expect(fn () => BootGuards::assert(appInEnv('production'), configOf($bad)))
         ->toThrow(RuntimeException::class, 'no http(s):// scheme');
@@ -91,4 +95,71 @@ it('throws in production when webhooks are enabled without a secret', function (
 
     expect(fn () => BootGuards::assert(appInEnv('production'), configOf($bad)))
         ->toThrow(RuntimeException::class, 'ROAD_WEBHOOK_SECRET');
+});
+
+/**
+ * The cross-environment guard (B1-635).
+ *
+ * `config/road.php` now derives the API base from ROAD_ENVIRONMENT, so an app
+ * that names 'production' reaches Plat's production API without setting a URL.
+ * That removes a boot error which used to stop one specific accident — holding
+ * sandbox credentials in production posture — so the accident is now caught on
+ * purpose. Mirrors @b1-road/node-core's `assertOneEnvironment`.
+ */
+it('throws when production posture holds a sandbox issuer', function () {
+    $bad = safeProdConfig();
+    $bad['road']['auth_server']['issuer_url'] = 'https://auth.road-sandbox.b1.app';
+
+    expect(fn () => BootGuards::assert(appInEnv('production'), configOf($bad)))
+        ->toThrow(RuntimeException::class, "AUTH_SERVER_ISSUER_URL ('https://auth.road-sandbox.b1.app') is sandbox's");
+});
+
+it('throws when production posture holds a sandbox API base', function () {
+    $bad = safeProdConfig();
+    $bad['road']['api']['base_url'] = 'https://api.road-sandbox.b1.app';
+
+    expect(fn () => BootGuards::assert(appInEnv('production'), configOf($bad)))
+        ->toThrow(RuntimeException::class, "ROAD_API_BASE_URL ('https://api.road-sandbox.b1.app') is sandbox's");
+});
+
+it('throws when sandbox posture holds a production issuer', function () {
+    // The other direction: production credentials pasted into an app that never
+    // had ROAD_ENVIRONMENT flipped.
+    $bad = safeProdConfig();
+    $bad['road']['environment'] = 'sandbox';
+    $bad['road']['api']['base_url'] = 'https://api.road-sandbox.b1.app';
+
+    expect(fn () => BootGuards::assert(appInEnv('production'), configOf($bad)))
+        ->toThrow(RuntimeException::class, "is production's");
+});
+
+it('stays silent on a host it does not recognise', function () {
+    // A gateway, a tunnel or a self-hosted Auth Server matches no known origin.
+    // A guard that guesses about setups it cannot judge is a guard people
+    // disable, so this must reach the end without throwing.
+    $own = safeProdConfig();
+    $own['road']['api']['base_url'] = 'https://road-gateway.acme.example';
+    $own['road']['auth_server']['issuer_url'] = 'https://sso.acme.example';
+
+    BootGuards::assert(appInEnv('production'), configOf($own));
+
+    // Not `expect(true)->toBeTrue()`: assert on the values the guard read, so a
+    // guard that silently skipped the whole block would not pass by default.
+    expect(B1Road\Laravel\Environments::of('https://road-gateway.acme.example'))->toBeNull()
+        ->and(B1Road\Laravel\Environments::of('https://sso.acme.example'))->toBeNull();
+});
+
+it('does not mistake a lookalike host for a known environment', function () {
+    // `api.plat.eduzz.com.evil.tld` CONTAINS a production hostname and belongs
+    // to whoever owns evil.tld. Asserted from SANDBOX posture so a substring
+    // match would answer "production", disagree, and refuse a boot that should
+    // be allowed — under production posture it would agree and prove nothing.
+    $lookalike = safeProdConfig();
+    $lookalike['road']['environment'] = 'sandbox';
+    $lookalike['road']['api']['base_url'] = 'https://api.road-sandbox.b1.app';
+    $lookalike['road']['auth_server']['issuer_url'] = 'https://auth.plat.eduzz.com.evil.tld';
+
+    BootGuards::assert(appInEnv('production'), configOf($lookalike));
+
+    expect(B1Road\Laravel\Environments::of('https://auth.plat.eduzz.com.evil.tld'))->toBeNull();
 });

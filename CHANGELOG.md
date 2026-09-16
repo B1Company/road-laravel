@@ -11,6 +11,45 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Added
+
+- **`ROAD_ENVIRONMENT` now reaches production on its own (B1-635).**
+  `config/road.php` derives `road.api.base_url` from the environment, so going
+  live is one variable instead of a URL copied into every deployment:
+
+  ```dotenv
+  ROAD_ENVIRONMENT=production   # ROAD_API_BASE_URL no longer needed
+  ```
+
+  Set `ROAD_API_BASE_URL` only to point at a local stack or your own gateway,
+  and it is still required for `ROAD_ENVIRONMENT=local`, which Eduzz Plat does
+  not host. The hosted URLs live in the new `B1Road\Laravel\Environments`,
+  mirrored from `@b1-road/types` and checked against it in CI.
+
+- **`road:install` asks which environment first**, and offers that
+  environment's hosted API URL as the default — press enter to accept it. The
+  URL question is no longer required for a hosted environment.
+
+### Fixed
+
+- **A new boot guard refuses a config that mixes the two environments.** Sandbox
+  and production are separate instances with separate credentials, so a
+  production app holding a sandbox issuer (or the reverse) cannot sign anyone
+  in. It used to boot green and fail at the first real user's login with an OIDC
+  error naming a client id; now it fails at boot naming which half is out of
+  place. Silent for hosts it does not recognise — a local stack, a tunnel or a
+  self-hosted Auth Server is nobody's business but yours.
+
+- **`road:install --no-interaction` no longer writes a dead hostname into
+  `.env`.** It stubbed `ROAD_API_BASE_URL=https://api.road.b1.app`, a host
+  retired when `plat.eduzz.com` became canonical on 2026-09-10. It now stubs
+  `ROAD_ENVIRONMENT=sandbox` and leaves the URL blank, so the config derives it
+  and there is nothing left to go stale.
+
+- **`composer.json` no longer advertises `https://portal.road.b1.app`** as the
+  package homepage, support docs and author URL. That hostname never existed.
+
+
 ### Security
 
 - **Raised the Guzzle floor to `^7.15.2` (B1-356).** The previous `^7.8`
