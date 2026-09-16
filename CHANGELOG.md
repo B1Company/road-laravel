@@ -28,6 +28,11 @@ contract from `alpha` to `v1` (see
   `Environments::surfaceOf()` returns `['environment' => …, 'surface' => …,
   'secure' => bool]` — a third key, if you were reading that array directly.
 
+  Host matching also strips a terminal DNS dot. `parse_url` keeps it, and
+  `api.plat.eduzz.com.` resolves to the same host — so the fully-qualified form
+  read as an unknown origin and skipped this guard while the HTTP client went on
+  to the real host with the bearer attached.
+
 ### Added
 
 - **`ROAD_ENVIRONMENT` now reaches production on its own (B1-635).**

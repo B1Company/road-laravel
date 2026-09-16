@@ -41,6 +41,15 @@ it('distinguishes surfaces, so an API URL is not an issuer', function () {
         ->toBe(['environment' => 'production', 'surface' => 'api', 'secure' => true]);
 });
 
+it('sees through a terminal DNS dot', function () {
+    // The fully-qualified form resolves to the same host and `parse_url` keeps
+    // the dot, so it read as an unknown origin and skipped the plaintext guard
+    // while the HTTP client went on to the real host. (CodeRabbit, #615.)
+    expect(Environments::of('http://api.plat.eduzz.com./'))->toBe('production')
+        ->and(Environments::surfaceOf('http://auth.plat.eduzz.com.'))
+        ->toBe(['environment' => 'production', 'surface' => 'auth_server', 'secure' => false]);
+});
+
 it('says nothing about a host it does not know', function () {
     expect(Environments::of('http://localhost:8080'))->toBeNull()
         ->and(Environments::of('https://sso.acme.example'))->toBeNull()

@@ -300,3 +300,11 @@ it('still allows a plaintext host that is not Plat\'s', function () {
 
     expect(Environments::surfaceOf('http://localhost:3000'))->toBeNull();
 });
+
+it('refuses a terminal-dot hosted host over plaintext http', function () {
+    $bad = safeProdConfig();
+    $bad['road']['api']['base_url'] = 'http://api.plat.eduzz.com.';
+
+    expect(fn () => BootGuards::assert(appInEnv('production'), configOf($bad)))
+        ->toThrow(RuntimeException::class, 'reached over plaintext http');
+});

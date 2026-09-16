@@ -133,7 +133,15 @@ final class Environments
             return null;
         }
 
-        $host = strtolower($parts['host']);
+        // `parse_url` keeps the terminal dot of a fully-qualified name, and
+        // `api.plat.eduzz.com.` resolves to the same host in DNS — so it read as
+        // an unknown origin and skipped the plaintext guard while the HTTP
+        // client went on to the real host with the bearer attached.
+        // (CodeRabbit, #615.)
+        $host = rtrim(strtolower($parts['host']), '.');
+        if ($host === '') {
+            return null;
+        }
         $default = $scheme === 'https' ? 443 : 80;
         if (isset($parts['port']) && $parts['port'] !== $default) {
             $host .= ':'.$parts['port'];
