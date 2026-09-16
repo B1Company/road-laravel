@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel;
 
-use B1Road\Laravel\Environments;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
 use RuntimeException;
@@ -139,5 +138,4 @@ final class BootGuards
             );
         }
     }
-
 }

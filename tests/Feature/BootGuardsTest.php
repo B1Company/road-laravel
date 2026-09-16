@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use B1Road\Laravel\BootGuards;
+use B1Road\Laravel\Environments;
 use Illuminate\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 
@@ -145,8 +146,8 @@ it('stays silent on a host it does not recognise', function () {
 
     // Not `expect(true)->toBeTrue()`: assert on the values the guard read, so a
     // guard that silently skipped the whole block would not pass by default.
-    expect(B1Road\Laravel\Environments::of('https://road-gateway.acme.example'))->toBeNull()
-        ->and(B1Road\Laravel\Environments::of('https://sso.acme.example'))->toBeNull();
+    expect(Environments::of('https://road-gateway.acme.example'))->toBeNull()
+        ->and(Environments::of('https://sso.acme.example'))->toBeNull();
 });
 
 it('does not mistake a lookalike host for a known environment', function () {
@@ -161,7 +162,7 @@ it('does not mistake a lookalike host for a known environment', function () {
 
     BootGuards::assert(appInEnv('production'), configOf($lookalike));
 
-    expect(B1Road\Laravel\Environments::of('https://auth.plat.eduzz.com.evil.tld'))->toBeNull();
+    expect(Environments::of('https://auth.plat.eduzz.com.evil.tld'))->toBeNull();
 });
 
 it('checks the Road environment even outside APP_ENV=production', function () {
@@ -186,7 +187,7 @@ it('still skips the production-only guards outside production', function () {
 
     BootGuards::assert(appInEnv('local'), configOf($dev));
 
-    expect(B1Road\Laravel\Environments::of($dev['road']['api']['base_url']))
+    expect(Environments::of($dev['road']['api']['base_url']))
         ->toBe('production');
 });
 

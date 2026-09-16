@@ -10,7 +10,6 @@ use B1Road\Laravel\Environments;
  * Mirrored from `ROAD_ENVIRONMENTS` in `@b1-road/types`; the monorepo's
  * `scripts/environment-conformance.mjs` is what stops the two drifting.
  */
-
 it('resolves the hosted API for each environment', function () {
     expect(Environments::apiUrl('sandbox'))->toBe('https://api.road-sandbox.b1.app')
         ->and(Environments::apiUrl('production'))->toBe('https://api.plat.eduzz.com');

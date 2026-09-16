@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use B1Road\Laravel\Environments;
 use Illuminate\Support\Facades\File;
 
 afterEach(function () {
@@ -135,7 +136,7 @@ it('defaults the API base URL from the chosen environment', function () {
     expect($env)->not->toContain('road-sandbox');
 
     // And the environment that .env names does resolve to the production API.
-    expect(B1Road\Laravel\Environments::apiUrl('production'))
+    expect(Environments::apiUrl('production'))
         ->toBe('https://api.plat.eduzz.com');
 });
 

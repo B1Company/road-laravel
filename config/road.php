@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use B1Road\Laravel\Environments;
 
 return [
 
@@ -32,7 +33,7 @@ return [
         | set it when ROAD_ENVIRONMENT=local, which Plat does not host.
         */
         'base_url' => env('ROAD_API_BASE_URL')
-            ?: \B1Road\Laravel\Environments::apiUrl(
+            ?: Environments::apiUrl(
                 env('ROAD_ENVIRONMENT', env('ROAD_ENV', 'sandbox'))
             ),
         'version' => env('ROAD_API_VERSION', 'alpha'),
