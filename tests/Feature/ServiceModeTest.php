@@ -86,7 +86,7 @@ it('re-acquires and retries once on a 401 from Road', function () {
             ->push(['access_token' => 'stale-token', 'expires_in' => 3600])
             ->push(['access_token' => 'fresh-token', 'expires_in' => 3600]),
         'api.road.test/api/alpha/organization/business-units/bu_1' => Http::sequence()
-            ->push(['type' => 'https://api.road.b1.app/errors/authentication-required', 'title' => 'Unauthorized', 'status' => 401, 'detail' => 'token rejected'], 401)
+            ->push(['type' => 'https://api.example.com/errors/authentication-required', 'title' => 'Unauthorized', 'status' => 401, 'detail' => 'token rejected'], 401)
             ->push(['data' => serviceBuDetail('bu_1', 'scope_1')], 200),
     ]);
 

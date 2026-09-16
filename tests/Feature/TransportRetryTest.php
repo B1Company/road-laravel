@@ -28,7 +28,7 @@ function transport(): HttpTransportInterface
 function serverErrorBody(): array
 {
     return [
-        'type' => 'https://api.road.b1.app/errors/internal-error',
+        'type' => 'https://api.example.com/errors/internal-error',
         'title' => 'Internal Server Error',
         'status' => 500,
         'detail' => 'boom',
@@ -82,7 +82,7 @@ it('returns the body when a retry succeeds on the second attempt', function () {
 
 it('never retries a 429 and surfaces Retry-After on the typed exception', function () {
     Http::fake(['*' => Http::response(
-        ['type' => 'https://api.road.b1.app/errors/rate-limited', 'title' => 'Rate Limit Exceeded', 'status' => 429, 'detail' => 'slow down'],
+        ['type' => 'https://api.example.com/errors/rate-limited', 'title' => 'Rate Limit Exceeded', 'status' => 429, 'detail' => 'slow down'],
         429,
         ['Retry-After' => '7'],
     )]);

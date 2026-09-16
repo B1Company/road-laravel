@@ -17,7 +17,7 @@ use B1Road\Laravel\Exceptions\RoadValidationException;
 function problem(int $status, string $type, string $title, string $detail, array $extra = []): array
 {
     return array_merge([
-        'type' => "https://api.road.b1.app/errors/$type",
+        'type' => "https://api.example.com/errors/$type",
         'title' => $title,
         'status' => $status,
         'detail' => $detail,

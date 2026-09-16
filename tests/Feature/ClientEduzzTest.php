@@ -84,7 +84,7 @@ it('surfaces EDUZZ_REAUTH_REQUIRED as a 403 RoadAuthzException with the code int
 
     Http::fake([
         'api.road.test/api/alpha/me/eduzz/products*' => Http::response([
-            'type' => 'https://api.road.b1.app/errors/forbidden',
+            'type' => 'https://api.example.com/errors/forbidden',
             'title' => 'Forbidden',
             'status' => 403,
             'detail' => 'EDUZZ_REAUTH_REQUIRED',
@@ -108,7 +108,7 @@ it('surfaces EDUZZ_UPSTREAM_UNAVAILABLE as a 503 RoadException (C5)', function (
 
     Http::fake([
         'api.road.test/api/alpha/me/eduzz/products*' => Http::response([
-            'type' => 'https://api.road.b1.app/errors/service-unavailable',
+            'type' => 'https://api.example.com/errors/service-unavailable',
             'title' => 'Service Unavailable',
             'status' => 503,
             'detail' => 'EDUZZ_UPSTREAM_UNAVAILABLE',

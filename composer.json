@@ -3,18 +3,18 @@
     "description": "Official Road SDK for Laravel — BFF auth, proxy, and client for the Road IAM platform.",
     "type": "library",
     "license": "MIT",
-    "homepage": "https://portal.road.b1.app",
+    "homepage": "https://dev-portal.road-sandbox.b1.app",
     "authors": [
         {
             "name": "B1 Produtos Digitais Ltda",
-            "homepage": "https://portal.road.b1.app",
+            "homepage": "https://dev-portal.road-sandbox.b1.app",
             "role": "Maintainer"
         }
     ],
     "support": {
         "issues": "https://github.com/B1Company/road/issues",
         "source": "https://github.com/B1Company/road/tree/main/apps/sdks/road-laravel",
-        "docs": "https://portal.road.b1.app"
+        "docs": "https://dev-portal.road-sandbox.b1.app"
     },
     "keywords": ["road", "laravel", "iam", "rbac", "auth", "oidc", "bff", "b1"],
     "require": {
