@@ -105,14 +105,37 @@ final class BootGuards
         $baseUrl = (string) $config->get('road.api.base_url', '');
         $issuerUrl = (string) $config->get('road.auth_server.issuer_url', '');
 
-        $issuerSurface = $issuerUrl !== '' ? Environments::surfaceOf($issuerUrl) : null;
-        if ($issuerSurface !== null && $issuerSurface['surface'] !== 'auth_server') {
+        // No API URL at all. `Environments::apiUrl()` returns null for an
+        // environment Plat does not host — `local` — so config/road.php resolves
+        // this to an empty string and the app used to boot and fail on its first
+        // request. The scheme check below skips an empty value, so nothing else
+        // catches it. (CodeRabbit, #613.)
+        if ($baseUrl === '') {
+            $known = implode("', '", array_keys(Environments::HOSTED));
             throw new RuntimeException(
-                "Road SDK configuration is unsafe:\n  - AUTH_SERVER_ISSUER_URL ('{$issuerUrl}') is "
-                ."Eduzz Plat's {$issuerSurface['surface']} URL for {$issuerSurface['environment']}, not its Auth Server. "
-                .'The issuer is where OIDC discovery lives: '
-                .Environments::HOSTED[$issuerSurface['environment']]['auth_server']
+                "Road SDK configuration is unsafe:\n  - no Road API base URL. ROAD_ENVIRONMENT is "
+                ."'{$declared}', which Eduzz Plat does not host — only '{$known}' resolve on their own. "
+                .'Set ROAD_API_BASE_URL to the stack you are pointing at.'
             );
+        }
+
+        // A Road URL in the wrong slot, both directions. An API base in the
+        // issuer slot dies at OIDC discovery with a 404; an Auth Server URL in
+        // the API slot makes every proxied request 404 against a host with no
+        // `/api/alpha`.
+        foreach ([
+            'AUTH_SERVER_ISSUER_URL' => [$issuerUrl, 'auth_server', 'Auth Server'],
+            'ROAD_API_BASE_URL' => [$baseUrl, 'api', 'API'],
+        ] as $env => [$url, $want, $label]) {
+            $found = $url !== '' ? Environments::surfaceOf($url) : null;
+            if ($found !== null && $found['surface'] !== $want) {
+                throw new RuntimeException(
+                    "Road SDK configuration is unsafe:\n  - {$env} ('{$url}') is "
+                    ."Eduzz Plat's {$found['surface']} URL for {$found['environment']}, not its "
+                    ."{$label}. For {$found['environment']} that is "
+                    .Environments::HOSTED[$found['environment']][$want]
+                );
+            }
         }
 
         $problems = [];

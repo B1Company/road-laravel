@@ -429,7 +429,7 @@ The full config shape is published to `config/road.php`:
 
 | Key | Description |
 |---|---|
-| `road.environment` | `production` / `sandbox` / `local` — set by `ROAD_ENVIRONMENT`, and the only thing you change to go live |
+| `road.environment` | `production` / `sandbox` / `local` — set by `ROAD_ENVIRONMENT` (or `ROAD_ENV`). Selects the hosted API URL; it is **not** the whole migration, since the sandbox issuer and client credentials do not exist in production and must be replaced too |
 | `road.api.base_url` | Road API base URL. Defaults to the hosted URL for `road.environment`; set `ROAD_API_BASE_URL` only for a local stack or your own gateway |
 | `road.api.timeout` | HTTP timeout in seconds (default 10) |
 | `road.api.jwks_ttl` | OIDC discovery + JWKS cache TTL in seconds (default 600) |

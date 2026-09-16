@@ -201,3 +201,40 @@ it('refuses the API URL pasted into the issuer slot', function () {
     expect(fn () => BootGuards::assert(appInEnv('production'), configOf($bad)))
         ->toThrow(RuntimeException::class, "is Eduzz Plat's api URL for production, not its Auth Server");
 });
+
+it('refuses the Auth Server URL pasted into the API slot', function () {
+    // The mirror of the issuer check, missing until CodeRabbit flagged it on
+    // #613: an Auth Server URL in the API slot makes every proxied request 404
+    // against a host that has no /api/alpha.
+    $bad = safeProdConfig();
+    $bad['road']['api']['base_url'] = 'https://auth.plat.eduzz.com';
+
+    expect(fn () => BootGuards::assert(appInEnv('production'), configOf($bad)))
+        ->toThrow(RuntimeException::class, "is Eduzz Plat's auth_server URL for production, not its API");
+});
+
+it('refuses a local environment with no API URL', function () {
+    // `local` is a valid ROAD_ENVIRONMENT that Plat does not host, so
+    // Environments::apiUrl() returns null and config/road.php resolves to ''.
+    // The scheme check skips an empty value, so the app used to boot and fail on
+    // its first request instead. (CodeRabbit, #613.)
+    $bad = safeProdConfig();
+    $bad['road']['environment'] = 'local';
+    $bad['road']['api']['base_url'] = '';
+    $bad['road']['auth_server']['issuer_url'] = 'http://localhost:8080';
+
+    expect(fn () => BootGuards::assert(appInEnv('local'), configOf($bad)))
+        ->toThrow(RuntimeException::class, 'no Road API base URL');
+});
+
+it('still boots a local environment that supplies its own API URL', function () {
+    // The counter-case: `local` is legitimate, it just has to say where.
+    $ok = safeProdConfig();
+    $ok['road']['environment'] = 'local';
+    $ok['road']['api']['base_url'] = 'http://localhost:3000';
+    $ok['road']['auth_server']['issuer_url'] = 'http://localhost:8080';
+
+    BootGuards::assert(appInEnv('local'), configOf($ok));
+
+    expect(Environments::apiUrl('local'))->toBeNull();
+});
