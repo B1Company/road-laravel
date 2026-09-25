@@ -466,6 +466,63 @@ it('drops cached contexts when a bridge.grant.revoked webhook arrives', function
     expect(authorizeBodies())->toHaveCount(2);
 });
 
+// A revocation can land while Road is still answering. That answer predates
+// the revocation, so it must not be stored where the next request reads it.
+// Falsifiability: resolve the generation at write time instead of capturing it
+// before the call, and the pre-revocation context is served from cache.
+it('does not cache an answer that was in flight when the grant was revoked', function () {
+    $calls = 0;
+    fakeRoad(function () use (&$calls) {
+        if (++$calls === 1) {
+            event(new BridgeGrantRevoked('evt_1', '2026-09-25T00:00:00Z', new BridgeGrantWebhookData(
+                providerPublicId: 'plat_psp',
+                subjectPlatformPublicId: 'plat_consumer',
+                roleTemplateName: 'reader',
+                grantId: 'grant-1',
+            )));
+        }
+
+        return Http::response(['data' => bridgeCtx()]);
+    });
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertOk();
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertOk();
+
+    expect(authorizeBodies())->toHaveCount(2);
+});
+
+// The degraded marker is only phrasing, but it is written from the same
+// request and must follow the same rule: a revocation mid-request leaves it
+// where nobody reads it, so the next request starts from the broad question.
+it('does not keep a degraded marker written across a revocation', function () {
+    $revoked = false;
+    fakeRoad(function (HttpRequest $r) use (&$revoked) {
+        if (isset($r->data()['permissions'])) {
+            return Http::response(['data' => bridgeCtx(['degraded' => true])]);
+        }
+        // The revocation lands while Road is answering the broad question,
+        // i.e. before the middleware writes its marker.
+        if (! $revoked) {
+            $revoked = true;
+            event(new BridgeGrantRevoked('evt_1', '2026-09-25T00:00:00Z', new BridgeGrantWebhookData(
+                providerPublicId: 'plat_psp',
+                subjectPlatformPublicId: 'plat_consumer',
+                roleTemplateName: 'reader',
+                grantId: 'grant-1',
+            )));
+        }
+
+        return Http::response(['type' => 'x', 'title' => 'DEGRADED_REQUIRES_EXPLICIT_PERMISSIONS', 'status' => 422], 422);
+    });
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertOk();
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertOk();
+
+    expect(array_filter(authorizeBodies(), fn ($b) => ! isset($b['permissions'])))->toHaveCount(2);
+});
+
 // ── attempt reporting ───────────────────────────────────────────────────────
 
 // Falsifiability: send the report from handle() before `$next` and the handler

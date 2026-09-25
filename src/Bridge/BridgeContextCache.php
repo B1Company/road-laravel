@@ -48,11 +48,30 @@ final class BridgeContextCache
     }
 
     /**
+     * The current cache generation. A flush replaces it, which orphans every
+     * entry stored under the old one.
+     *
+     * **Capture it once, before asking Road, and pass it to every read and
+     * write for that request.** A revocation can land while Road is still
+     * answering. Resolving the generation at write time would file that
+     * pre-revocation answer under the new generation, where the next request
+     * reads it, and the revoked grant would keep working until the TTL ran out.
+     * Written under the captured generation instead, a stale answer lands where
+     * nobody reads it (and {@see put()} drops it outright).
+     */
+    public function generation(): string
+    {
+        $generation = $this->store()->get(self::PREFIX.'generation');
+
+        return is_string($generation) ? $generation : '0';
+    }
+
+    /**
      * @return array{context: BridgeContext, fetchedAt: float, usableUntil: float|null}|null
      */
-    public function get(string $key): ?array
+    public function get(string $key, string $generation): ?array
     {
-        $entry = $this->store()->get($this->contextKey($key));
+        $entry = $this->store()->get($this->contextKey($key, $generation));
         if (! is_array($entry) || ! is_array($entry['context'] ?? null) || ! is_float($entry['fetchedAt'] ?? null)) {
             return null;
         }
@@ -75,10 +94,15 @@ final class BridgeContextCache
     /**
      * Store a freshly fetched context. Kept only as long as the longest bound
      * that could still read it (freshness or staleness), and never past the
-     * token's expiry. A token that is already expired is not stored at all.
+     * token's expiry. A token that is already expired is not stored at all,
+     * and neither is an answer fetched before the latest flush.
      */
-    public function put(string $key, BridgeContext $context, string $token, float $now): void
+    public function put(string $key, BridgeContext $context, string $token, float $now, string $generation): void
     {
+        if ($generation !== $this->generation()) {
+            return;
+        }
+
         $usableUntil = self::usableUntil($context, $token);
         $keep = max($this->seconds('read_ttl', 60), $this->seconds('write_ttl', 5), $this->seconds('max_staleness', 0));
         if ($usableUntil !== null) {
@@ -88,7 +112,9 @@ final class BridgeContextCache
             return;
         }
 
-        $this->store()->put($this->contextKey($key), [
+        // Still keyed on the captured generation: if a flush lands between the
+        // check above and this write, the entry is orphaned rather than served.
+        $this->store()->put($this->contextKey($key, $generation), [
             'context' => $context->toWire(),
             'fetchedAt' => $now,
             'usableUntil' => $usableUntil,
@@ -99,19 +125,20 @@ final class BridgeContextCache
      * Remember that Road refused to characterise this token broadly (its 422),
      * so later requests go straight to the one question it can answer. This is
      * the phrasing to use, never a verdict. The verdict itself stays uncached.
+     * Scoped to the generation like a context, so a flush clears it too.
      */
-    public function markDegraded(string $key, string $token, float $now): void
+    public function markDegraded(string $key, string $token, float $now, string $generation): void
     {
         $exp = self::tokenExp($token);
         $keep = $exp !== null ? (int) floor($exp - $now) : $this->seconds('read_ttl', 60);
         if ($keep > 0) {
-            $this->store()->put(self::PREFIX.'degraded:'.$key, true, $keep);
+            $this->store()->put(self::PREFIX.'degraded:'.$generation.':'.$key, true, $keep);
         }
     }
 
-    public function isDegraded(string $key): bool
+    public function isDegraded(string $key, string $generation): bool
     {
-        return $this->store()->get(self::PREFIX.'degraded:'.$key) === true;
+        return $this->store()->get(self::PREFIX.'degraded:'.$generation.':'.$key) === true;
     }
 
     /** Drop every cached context. Wired to `bridge.grant.revoked` and `extension.install.uninstalled`. */
@@ -155,11 +182,9 @@ final class BridgeContextCache
         return is_array($claims) && is_int($claims['exp'] ?? null) ? $claims['exp'] : null;
     }
 
-    private function contextKey(string $key): string
+    private function contextKey(string $key, string $generation): string
     {
-        $generation = $this->store()->get(self::PREFIX.'generation');
-
-        return self::PREFIX.'ctx:'.(is_string($generation) ? $generation : '0').':'.$key;
+        return self::PREFIX.'ctx:'.$generation.':'.$key;
     }
 
     private function seconds(string $option, int $default): int

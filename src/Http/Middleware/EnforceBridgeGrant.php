@@ -117,7 +117,11 @@ final class EnforceBridgeGrant
 
         $key = BridgeContextCache::keyFor($token);
         $now = self::now();
-        $cached = $this->cache->get($key);
+        // Captured before Road is asked, and used for every read and write
+        // below: a revocation that lands mid-call must not see its pre-revocation
+        // answer stored where the next request reads it.
+        $generation = $this->cache->generation();
+        $cached = $this->cache->get($key, $generation);
         $maxAge = $this->isRead($permission) ? $this->seconds('read_ttl', 60) : $this->seconds('write_ttl', 5);
 
         // Strict `<`: a bound of 0 must mean "never reuse", as `write_ttl: 0` documents.
@@ -125,14 +129,14 @@ final class EnforceBridgeGrant
             $context = $cached['context'];
         } else {
             try {
-                if ($permission !== null && $this->cache->isDegraded($key)) {
+                if ($permission !== null && $this->cache->isDegraded($key, $generation)) {
                     // Straight to the answerable question. Not cached: this answer is
                     // scoped to one permission and the cache is keyed on the token, so
                     // storing it would let a verdict about `read:X` answer `delete:X`.
                     $context = $this->bridge()->authorize($token, [$permission]);
                 } else {
                     $context = $this->bridge()->authorize($token);
-                    $this->cache->put($key, $context, $token, self::now());
+                    $this->cache->put($key, $context, $token, self::now(), $generation);
                 }
             } catch (LogicException $e) {
                 throw $e;
@@ -142,7 +146,7 @@ final class EnforceBridgeGrant
                 if ($status === 422 && $permission !== null) {
                     // Road lost the mint record and will not enumerate the token, but it
                     // still answers "is this consumer allowed X". Ask that, and remember to.
-                    $this->cache->markDegraded($key, $token, $now);
+                    $this->cache->markDegraded($key, $token, $now, $generation);
                     try {
                         $context = $this->bridge()->authorize($token, [$permission]);
                     } catch (LogicException $e) {
