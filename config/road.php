@@ -160,10 +160,42 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Platform Bridge (provider side)
+    |--------------------------------------------------------------------------
+    | Settings for the `road.bridge` middleware, which checks the brokered
+    | tokens other platforms present to your API. It calls Road with the
+    | `service` credential above. Not to be confused with `bridges.gate` below.
+    |
+    | read_ttl / write_ttl — seconds a token's answer is reused for read verbs
+    |   (read, list, view, get) and for everything else. 0 asks Road every time.
+    |   An answer never outlives the token's own expiry, whatever these say.
+    | max_staleness — the fail mode. Seconds a cached answer may still be served
+    |   while Road is unreachable. 0 (default) fails closed: no fresh answer,
+    |   no access (503). Raise it to ride out a Road outage on answers at most
+    |   this old. A refusal from Road is never overridden by the cache.
+    | strict_tenancy / strict_acting_user — refuse a token that names a tenant
+    |   (or an end-user) on a route that gives no way to check it.
+    | cache_store — a store every worker shares (redis, database, file). The
+    |   `array` store forgets between requests, which disables the cache.
+    */
+
+    'platform_bridge' => [
+        'cache_store' => env('ROAD_PLATFORM_BRIDGE_CACHE_STORE'),
+        'read_ttl' => (int) env('ROAD_PLATFORM_BRIDGE_READ_TTL', 60),
+        'write_ttl' => (int) env('ROAD_PLATFORM_BRIDGE_WRITE_TTL', 5),
+        'max_staleness' => (int) env('ROAD_PLATFORM_BRIDGE_MAX_STALENESS', 0),
+        'strict_tenancy' => true,
+        'strict_acting_user' => true,
+        'report_attempts' => (bool) env('ROAD_PLATFORM_BRIDGE_REPORT_ATTEMPTS', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Bridges
     |--------------------------------------------------------------------------
     |
-    | Opt-in integrations with Laravel's own subsystems.
+    | Opt-in integrations with Laravel's own subsystems. (Platform Bridge, the
+    | cross-platform capability, is configured under `platform_bridge` above.)
     |
     | gate — route `road:{action}:{Subject}` abilities through Road's engine so
     | `Gate::allows('road:read:Project', $buId)`, `$user->can(...)`, and Blade

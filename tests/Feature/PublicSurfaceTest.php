@@ -18,7 +18,7 @@ it('registers every documented middleware alias', function () {
 
     foreach ([
         'road', 'road.optional', 'road.errors', 'road.inertia',
-        'road.permission', 'road.permission.attribute', 'road.webhook',
+        'road.permission', 'road.permission.attribute', 'road.webhook', 'road.bridge',
     ] as $alias) {
         expect($aliases)->toHaveKey($alias);
     }
@@ -30,6 +30,7 @@ it('exposes every documented config section', function () {
     foreach ([
         'road.api.retry', 'road.auth_server', 'road.proxy',
         'road.service', 'road.webhooks', 'road.inertia', 'road.debug',
+        'road.platform_bridge',
     ] as $key) {
         expect(config($key))->toBeArray();
     }

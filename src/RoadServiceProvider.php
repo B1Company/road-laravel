@@ -25,6 +25,7 @@ use B1Road\Laravel\Console\WhoamiCommand;
 use B1Road\Laravel\Context\ContextResolver;
 use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\Exceptions\RoadException;
+use B1Road\Laravel\Http\Middleware\EnforceBridgeGrant;
 use B1Road\Laravel\Http\Middleware\EnsureRoadAuthenticated;
 use B1Road\Laravel\Http\Middleware\EnsureRoadAuthenticatedOptional;
 use B1Road\Laravel\Http\Middleware\HandleRoadExceptions;
@@ -238,6 +239,7 @@ final class RoadServiceProvider extends ServiceProvider
         $router->aliasMiddleware('road.permission', RequirePermission::class);
         $router->aliasMiddleware('road.permission.attribute', ResolveAttributePermissions::class);
         $router->aliasMiddleware('road.webhook', VerifyRoadWebhookSignature::class);
+        $router->aliasMiddleware('road.bridge', EnforceBridgeGrant::class);
     }
 
     /**
