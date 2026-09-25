@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel\Client;
 
+use B1Road\Laravel\Client\Resources\Bridge;
 use B1Road\Laravel\Client\Resources\BusinessUnits;
 use B1Road\Laravel\Client\Resources\BusinessUnitScope;
 use B1Road\Laravel\Client\Resources\Iam;
@@ -13,7 +14,7 @@ use B1Road\Laravel\Client\Resources\Me;
 /**
  * Root client for the Road API. Mirrors
  * `apps/sdks/road-nestjs/src/client/road-client.ts` at the surface level:
- * `me()`, `businessUnits()`, `iam()`, and `invitations()`.
+ * `me()`, `businessUnits()`, `iam()`, `invitations()` and `bridge()`.
  */
 class RoadClient
 {
@@ -24,6 +25,8 @@ class RoadClient
     private ?Iam $iam = null;
 
     private ?Invitations $invitations = null;
+
+    private ?Bridge $bridge = null;
 
     public function __construct(private readonly HttpTransportInterface $http) {}
 
@@ -53,6 +56,16 @@ class RoadClient
     public function invitations(): Invitations
     {
         return $this->invitations ??= new Invitations($this->http);
+    }
+
+    /**
+     * Platform Bridge, provider side. Call it as your platform
+     * (`Road::asService()->client()->bridge()`), or let the `road.bridge`
+     * middleware do it for you.
+     */
+    public function bridge(): Bridge
+    {
+        return $this->bridge ??= new Bridge($this->http);
     }
 
     /**
