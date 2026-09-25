@@ -14,6 +14,7 @@ use B1Road\Laravel\Auth\JwksCache;
 use B1Road\Laravel\Auth\JwtValidator;
 use B1Road\Laravel\Auth\RoadGuard;
 use B1Road\Laravel\Auth\RoadUserProvider;
+use B1Road\Laravel\Bridge\BridgeContextCache;
 use B1Road\Laravel\Bridges\GateBridge;
 use B1Road\Laravel\Client\HttpTransport;
 use B1Road\Laravel\Client\HttpTransportInterface;
@@ -36,12 +37,15 @@ use B1Road\Laravel\Inertia\ShareRoadContext;
 use B1Road\Laravel\Telemetry\NoopTelemetry;
 use B1Road\Laravel\Telemetry\RoadTelemetry;
 use B1Road\Laravel\Testing\FakeRoadClientFactory;
+use B1Road\Laravel\Webhooks\Events\BridgeGrantRevoked;
+use B1Road\Laravel\Webhooks\Events\ExtensionInstallUninstalled;
 use B1Road\Laravel\Webhooks\WebhookSignatureVerifier;
 use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Contracts\Session\Session;
@@ -197,6 +201,13 @@ final class RoadServiceProvider extends ServiceProvider
         if ($this->shouldAutoMountInertia($config)) {
             $this->autoMountInertiaSharedProps();
         }
+
+        // A cached Bridge context must not outlive the grant or install behind
+        // it. The payloads do not name tokens, so either event flushes them all.
+        $this->app->make(Dispatcher::class)->listen(
+            [BridgeGrantRevoked::class, ExtensionInstallUninstalled::class],
+            [BridgeContextCache::class, 'handle'],
+        );
 
         if ($config->get('road.bridges.gate', false)) {
             GateBridge::register(

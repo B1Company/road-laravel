@@ -5,6 +5,8 @@ declare(strict_types=1);
 use B1Road\Laravel\Bridge\BridgeAccessDenied;
 use B1Road\Laravel\Bridge\BridgeContext;
 use B1Road\Laravel\Http\Middleware\EnforceBridgeGrant;
+use B1Road\Laravel\Webhooks\Events\BridgeGrantRevoked;
+use B1Road\Laravel\Webhooks\Payloads\BridgeGrantWebhookData;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Http\Request;
@@ -439,6 +441,29 @@ it('fails loud when no service credential is configured', function () {
     $this->withoutExceptionHandling();
     expect(fn () => $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()]))
         ->toThrow(LogicException::class, 'service credential');
+});
+
+// ── revocation ──────────────────────────────────────────────────────────────
+
+// Falsifiability: drop the listener registration in RoadServiceProvider and
+// the revoked grant keeps answering from cache for the rest of the TTL.
+it('drops cached contexts when a bridge.grant.revoked webhook arrives', function () {
+    fakeRoad(fn () => Http::response(['data' => bridgeCtx()]));
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertOk();
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertOk();
+    expect(authorizeBodies())->toHaveCount(1);
+
+    event(new BridgeGrantRevoked('evt_1', '2026-09-25T00:00:00Z', new BridgeGrantWebhookData(
+        providerPublicId: 'plat_psp',
+        subjectPlatformPublicId: 'plat_consumer',
+        roleTemplateName: 'reader',
+        grantId: 'grant-1',
+    )));
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertOk();
+    expect(authorizeBodies())->toHaveCount(2);
 });
 
 // ── attempt reporting ───────────────────────────────────────────────────────
