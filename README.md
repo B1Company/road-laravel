@@ -263,6 +263,10 @@ The ability is `road:{action}:{Subject}` and the **first argument is the busines
 unit id**. Anything not prefixed `road:` (or malformed) falls through to your
 app's own gates and policies untouched — the bridge only answers Road abilities.
 
+This is a bridge to Laravel's Gate (`B1Road\Laravel\Bridges\GateBridge`). It is
+unrelated to Platform Bridge, the cross-platform capability; for that, see
+[Platform Bridge](#platform-bridge-accepting-another-platforms-calls).
+
 ### The permission algebra
 
 Permissions are `"$action:$Subject"` strings. The enum cases match the
@@ -379,6 +383,92 @@ transparently on a 401. `asService()` uses a dedicated context, so a request
 handler can call `Road::user()` *and* dispatch a job with `Road::asService()`
 without cross-contamination.
 
+## Platform Bridge: accepting another platform's calls
+
+When another platform calls your API through Platform Bridge, it sends a
+brokered token. Receiving that token is not the authorization. It says who the
+caller is and that the token was minted for you. What the caller may actually
+do is a separate question, and the `road.bridge` middleware asks it for you.
+It is the Laravel counterpart of `bridgeEnforce()` in the Node SDKs.
+
+**1. Configure your service credential.** The middleware asks Road as your
+platform, with the same credential `Road::asService()` uses (see above). Point
+the cache at a store every worker shares:
+
+```dotenv
+ROAD_SERVICE_CLIENT_ID=...
+ROAD_SERVICE_CLIENT_SECRET=...
+ROAD_PLATFORM_BRIDGE_CACHE_STORE=redis
+```
+
+**2. Protect a route.** Name the permission it requires:
+
+```php
+Route::middleware('road.bridge:read:Charge')->get('/partner/charges', ChargeIndex::class);
+```
+
+When the route serves one business unit's data, or one end-user's, say where
+to read them. A token that names a tenant is refused unless it matches, and so
+is a token minted on behalf of a different end-user:
+
+```php
+// args: permission, tenant source, acting-user source
+Route::middleware('road.bridge:read:Charge,buId,userId')
+    ->get('/partner/bu/{buId}/users/{userId}/charges', ChargeIndex::class);
+```
+
+A source is a route parameter or `input:<key>`. When the tenant lives
+somewhere else (a header, a subdomain), register a resolver once, in a service
+provider:
+
+```php
+use B1Road\Laravel\Http\Middleware\EnforceBridgeGrant;
+
+EnforceBridgeGrant::resolveTenantUsing(fn (Request $r) => $r->header('X-Tenant'));
+EnforceBridgeGrant::resolveActingUserUsing(fn (Request $r) => $r->route('userId'));
+```
+
+Road cannot make these two checks for you, because only your app knows whose
+data a request touches. So a token that names a tenant or an end-user is
+refused on a route that gives no way to check it (`tenant_unverifiable`,
+`acting_user_unverifiable`).
+
+**3. Read the context in your controller.**
+
+```php
+use B1Road\Laravel\Bridge\BridgeContext;
+
+$bridge = BridgeContext::of($request);
+$bridge->businessUnitId;          // the tenant the token is scoped to, if any
+$bridge->onBehalfOfUser;          // the end-user it acts for, if any
+$bridge->can('refund:Charge');    // anything else the token carries
+```
+
+**4. Subscribe to `bridge.grant.revoked`.** Answers are cached per token, so a
+revoked grant would otherwise keep working until its entry ages out. With
+webhooks on (see [Webhooks](#webhooks)) and your endpoint subscribed to
+`bridge.grant.revoked`, the SDK drops every cached answer the moment the event
+arrives. `extension.install.uninstalled` does the same. There is nothing to
+register yourself.
+
+**What a refusal looks like.** Denials are JSON with a stable reason, the same
+codes the Node middleware uses: `401 missing_token`; `403 not_authorized`,
+`cross_tenant`, `cross_user`, `tenant_unverifiable`,
+`acting_user_unverifiable`, `degraded_context`; `503
+authorization_unavailable`. Each one also fires a `BridgeAccessDenied` event for
+your logs and metrics. Every decision on a permission is reported back to
+Road's audit trail after the response has gone out, with the path but never
+the query string.
+
+**Caching and the fail mode.** Road is asked once per token and the answer is
+reused for 60 seconds on read verbs (`read`, `list`, `view`, `get`) and 5
+seconds on anything else. An answer is never reused past the token's own
+expiry. When Road cannot be reached, the default is to fail closed: no fresh
+answer, no access (`503`). Set `ROAD_PLATFORM_BRIDGE_MAX_STALENESS` to a number
+of seconds to keep serving cached answers up to that age during an outage
+(`BridgeContext::$servedStale` tells you when that happened). A refusal from
+Road is never overridden by the cache.
+
 ## Escape hatches
 
 When the typed surface doesn't cover something, drop a level — you never have to
@@ -443,6 +533,7 @@ The full config shape is published to `config/road.php`:
 | `road.debug.header_enabled` | Surface `DecisionTrace` on errors when `X-Road-Debug: 1` |
 | `road.service.*` | Service-to-service credentials for `Road::asService()` |
 | `road.webhooks.*` | Webhook receiver: `enabled`, `path`, `secret`, `tolerance`, `verify` |
+| `road.platform_bridge.*` | `road.bridge` middleware: `cache_store`, `read_ttl` (60), `write_ttl` (5), `max_staleness` (0, fail-closed), `strict_tenancy`, `strict_acting_user`, `report_attempts` |
 
 ## Naming note
 

@@ -35,6 +35,25 @@ contract from `alpha` to `v1` (see
 
 ### Added
 
+- **`road.bridge`: Platform Bridge enforcement on the provider side (B1-707).**
+  A Laravel provider had nothing to check the brokered tokens other platforms
+  present, so each one had to rebuild the cache, the tenant check and the fail
+  mode by hand. `Route::middleware('road.bridge:read:Charge,buId')` now does
+  what `bridgeEnforce()` does in the Node SDKs: asks Road about the token with
+  your service credential, caches the answer per token (keyed by a digest of
+  the whole token, never its `jti`), enforces the tenant and acting-user
+  bindings, denies a missing permission with the same reason codes, attaches a
+  `BridgeContext` to the request and reports the attempt after the response.
+  A `bridge.grant.revoked` or `extension.install.uninstalled` webhook drops
+  every cached answer. Also new: `Road::asService()->client()->bridge()` and
+  the `BridgeAccessDenied` event. Configured under `road.platform_bridge`.
+
+  Two defaults differ from Node on purpose. A cached answer never outlives the
+  token's own expiry (Node can honour an expired token for up to a minute,
+  B1-472). And `max_staleness` defaults to `0`, so a Road outage fails closed;
+  set it to serve cached answers up to that age instead (Node defaults to
+  300 seconds).
+
 - **`ROAD_ENVIRONMENT` now reaches production on its own (B1-635).**
   `config/road.php` derives `road.api.base_url` from the environment, so going
   live is one variable instead of a URL copied into every deployment:

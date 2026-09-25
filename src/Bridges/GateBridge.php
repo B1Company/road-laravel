@@ -23,6 +23,10 @@ use Illuminate\Contracts\Auth\Authenticatable;
  * Laravel's Gate for Road shouldn't pay for a `Gate::before` hook it doesn't use.
  * Returning null for any other ability lets normal Gate/Policy resolution
  * continue, so this composes with the host app's own gates.
+ *
+ * Not to be confused with Platform Bridge, the cross-platform capability,
+ * whose provider-side enforcement is the `road.bridge` middleware
+ * (`EnforceBridgeGrant`).
  */
 final class GateBridge
 {
