@@ -11,6 +11,8 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+## [0.1.0-alpha.4] — 2026-09-25
+
 ### Security
 
 - **Refuses a hosted Eduzz Plat surface reached over plaintext `http` (B1-643).**
@@ -32,6 +34,19 @@ contract from `alpha` to `v1` (see
   `api.plat.eduzz.com.` resolves to the same host — so the fully-qualified form
   read as an unknown origin and skipped this guard while the HTTP client went on
   to the real host with the bearer attached.
+
+- **Raised the Guzzle floor to `^7.15.2` (B1-356).** The previous `^7.8`
+  admitted versions carrying six advisories, the notable one being
+  CVE-2026-69246 (high): a noncanonical host could bypass host-based checks.
+  That matters here because Guzzle backs Laravel's HTTP client, which this
+  package uses to fetch the Auth Server's JWKS — the trust anchor for token
+  signature verification — as well as for OIDC discovery and every Road API
+  call. Also covers CVE-2026-69245, CVE-2026-67353/67354/67355 and
+  CVE-2026-67339 (cookie scoping, `Referer` leakage, response-cookie DoS, and
+  `Proxy-Authorization` reaching origin servers).
+
+  Consumers resolving `^7.8` today already pick up a patched 7.15.x, so this
+  closes the door by constraint rather than leaving it to resolution order.
 
 ### Added
 
@@ -70,43 +85,6 @@ contract from `alpha` to `v1` (see
 - **`road:install` asks which environment first**, and offers that
   environment's hosted API URL as the default — press enter to accept it. The
   URL question is no longer required for a hosted environment.
-
-### Fixed
-
-- **A new boot guard refuses a config that mixes the two environments.** Sandbox
-  and production are separate instances with separate credentials, so a
-  production app holding a sandbox issuer (or the reverse) cannot sign anyone
-  in. It used to boot green and fail at the first real user's login with an OIDC
-  error naming a client id; now it fails at boot naming which half is out of
-  place. Silent for hosts it does not recognise — a local stack, a tunnel or a
-  self-hosted Auth Server is nobody's business but yours.
-
-- **`road:install --no-interaction` no longer writes a dead hostname into
-  `.env`.** It stubbed `ROAD_API_BASE_URL=https://api.road.b1.app`, a host
-  retired when `plat.eduzz.com` became canonical on 2026-09-10. It now stubs
-  `ROAD_ENVIRONMENT=sandbox` and leaves the URL blank, so the config derives it
-  and there is nothing left to go stale.
-
-- **`composer.json` no longer advertises `https://portal.road.b1.app`** as the
-  package homepage, support docs and author URL. That hostname never existed.
-
-
-### Security
-
-- **Raised the Guzzle floor to `^7.15.2` (B1-356).** The previous `^7.8`
-  admitted versions carrying six advisories, the notable one being
-  CVE-2026-69246 (high): a noncanonical host could bypass host-based checks.
-  That matters here because Guzzle backs Laravel's HTTP client, which this
-  package uses to fetch the Auth Server's JWKS — the trust anchor for token
-  signature verification — as well as for OIDC discovery and every Road API
-  call. Also covers CVE-2026-69245, CVE-2026-67353/67354/67355 and
-  CVE-2026-67339 (cookie scoping, `Referer` leakage, response-cookie DoS, and
-  `Proxy-Authorization` reaching origin servers).
-
-  Consumers resolving `^7.8` today already pick up a patched 7.15.x, so this
-  closes the door by constraint rather than leaving it to resolution order.
-
-### Added
 
 - **Typed webhook events for Platform Bridge and Platform Extensions
   (B1-458).** `BridgeGrantCreated`, `BridgeGrantRevoked`,
@@ -164,6 +142,23 @@ contract from `alpha` to `v1` (see
   pre-1.0 surface clause above.
 
 ### Fixed
+
+- **A new boot guard refuses a config that mixes the two environments.** Sandbox
+  and production are separate instances with separate credentials, so a
+  production app holding a sandbox issuer (or the reverse) cannot sign anyone
+  in. It used to boot green and fail at the first real user's login with an OIDC
+  error naming a client id; now it fails at boot naming which half is out of
+  place. Silent for hosts it does not recognise — a local stack, a tunnel or a
+  self-hosted Auth Server is nobody's business but yours.
+
+- **`road:install --no-interaction` no longer writes a dead hostname into
+  `.env`.** It stubbed `ROAD_API_BASE_URL=https://api.road.b1.app`, a host
+  retired when `plat.eduzz.com` became canonical on 2026-09-10. It now stubs
+  `ROAD_ENVIRONMENT=sandbox` and leaves the URL blank, so the config derives it
+  and there is nothing left to go stale.
+
+- **`composer.json` no longer advertises `https://portal.road.b1.app`** as the
+  package homepage, support docs and author URL. That hostname never existed.
 
 - `SendTestEventDto::$businessUnitId` is nullable, matching the API. It was
   required here while the API had already made it optional (B1-348), so the
@@ -366,7 +361,8 @@ contract from `alpha` to `v1` (see
 - **Tooling**: `road:install`, `road:doctor`, `road:whoami`, and
   `road:generate-dtos` (OpenAPI-contract codegen with a `--check` drift gate).
 
-[Unreleased]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.3...HEAD
+[Unreleased]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.4...HEAD
+[0.1.0-alpha.4]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.3...road-laravel-v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.2...road-laravel-v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.1...road-laravel-v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha...road-laravel-v0.1.0-alpha.1
