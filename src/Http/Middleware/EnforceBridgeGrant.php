@@ -282,7 +282,8 @@ final class EnforceBridgeGrant
                     return $this->deny(
                         403,
                         'cross_user',
-                        'This token was minted on behalf of a different end-user than the one this request is for.',
+                        'This token was minted on behalf of a different end-user than the one this request is for. '
+                        .'Compare Road user ids: the token carries one as onBehalfOfUser, and the Auth Server user id never matches it.',
                         $permission,
                         $key,
                     );

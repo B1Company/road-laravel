@@ -307,9 +307,11 @@ it('refuses a token minted for one end-user against another', function () {
     fakeRoad(fn () => Http::response(['data' => bridgeCtx(['businessUnitId' => 'bu-a', 'onBehalfOfUser' => 'user-42'])]));
     bridgeRoute('road.bridge:read:Charge,buId,userId', '/bu/{buId}/users/{userId}/charges');
 
-    $this->getJson('/bu/bu-a/users/someone-else/charges', ['Authorization' => 'Bearer '.brokered()])
+    $refused = $this->getJson('/bu/bu-a/users/someone-else/charges', ['Authorization' => 'Bearer '.brokered()])
         ->assertStatus(403)
         ->assertJsonPath('error', 'cross_user');
+    // The usual cause is comparing the Auth Server id; the refusal says so.
+    expect($refused->json('error_description'))->toContain('Road user ids');
     $this->getJson('/bu/bu-a/users/user-42/charges', ['Authorization' => 'Bearer '.brokered()])
         ->assertOk();
 });
