@@ -431,7 +431,24 @@ EnforceBridgeGrant::resolveActingUserUsing(fn (Request $r) => $r->route('userId'
 Road cannot make these two checks for you, because only your app knows whose
 data a request touches. So a token that names a tenant or an end-user is
 refused on a route that gives no way to check it (`tenant_unverifiable`,
-`acting_user_unverifiable`).
+`acting_user_unverifiable`). The reverse holds too: on a route with a tenant
+source, a token that names no business unit is refused (`cross_tenant`), and
+with an acting-user source, a token minted with no person present is refused
+(`cross_user`).
+
+**One leg per route.** The middleware accepts Bridge tokens only, unless the
+route says otherwise. Routes an installed extension's backend calls name the
+data leg as the fourth argument, and leave the acting-user source empty when
+they serve unattended calls:
+
+```php
+// args: permission, tenant source, acting-user source, leg
+Route::middleware('road.bridge:read:Course,buId,,extensions')
+    ->get('/partner/bu/{buId}/courses', CourseIndex::class);
+```
+
+`any` accepts both legs, for a route that genuinely serves both kinds of
+caller. A token from the other leg is refused with `wrong_leg`.
 
 **3. Read the context in your controller.**
 

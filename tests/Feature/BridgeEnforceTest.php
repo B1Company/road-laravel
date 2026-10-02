@@ -246,7 +246,7 @@ it('does not serve an expired token stale while Road is down', function () {
 // a BU-A token serves a BU-B request.
 it('refuses an Extensions token against a different business unit', function () {
     fakeRoad(fn () => Http::response(['data' => bridgeCtx(['leg' => 'extensions', 'install' => 'exti_a', 'businessUnitId' => 'bu-a'])]));
-    bridgeRoute('road.bridge:read:Charge,buId', '/bu/{buId}/charges');
+    bridgeRoute('road.bridge:read:Charge,buId,,extensions', '/bu/{buId}/charges');
 
     $this->getJson('/bu/bu-B/charges', ['Authorization' => 'Bearer '.brokered()])
         ->assertStatus(403)
@@ -255,7 +255,7 @@ it('refuses an Extensions token against a different business unit', function () 
 
 it('allows an Extensions token against its own business unit', function () {
     fakeRoad(fn () => Http::response(['data' => bridgeCtx(['leg' => 'extensions', 'install' => 'exti_a', 'businessUnitId' => 'bu-a'])]));
-    bridgeRoute('road.bridge:read:Charge,buId', '/bu/{buId}/charges');
+    bridgeRoute('road.bridge:read:Charge,buId,,extensions', '/bu/{buId}/charges');
 
     $this->getJson('/bu/bu-a/charges', ['Authorization' => 'Bearer '.brokered()])
         ->assertOk()
@@ -275,7 +275,7 @@ it('refuses a Bridge token that names a tenant against a different business unit
 
 it('refuses a tenant-bound token when the route gives no way to check the tenant', function () {
     fakeRoad(fn () => Http::response(['data' => bridgeCtx(['leg' => 'extensions', 'businessUnitId' => 'bu-a'])]));
-    bridgeRoute('road.bridge:read:Charge');
+    bridgeRoute('road.bridge:read:Charge,,,extensions');
 
     $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])
         ->assertStatus(403)
@@ -285,7 +285,7 @@ it('refuses a tenant-bound token when the route gives no way to check the tenant
 it('checks the tenant with a registered resolver when the route names no source', function () {
     fakeRoad(fn () => Http::response(['data' => bridgeCtx(['leg' => 'extensions', 'businessUnitId' => 'bu-a'])]));
     EnforceBridgeGrant::resolveTenantUsing(fn (Request $r) => $r->header('X-Tenant'));
-    bridgeRoute('road.bridge:read:Charge');
+    bridgeRoute('road.bridge:read:Charge,,,extensions');
 
     $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered(), 'X-Tenant' => 'bu-B'])
         ->assertStatus(403)
@@ -362,6 +362,84 @@ it('refuses a degraded answer on a tenant-scoped route', function () {
     bridgeRoute('road.bridge:read:Charge,buId', '/bu/{buId}/charges');
 
     $this->getJson('/bu/bu-a/charges', ['Authorization' => 'Bearer '.brokered()])
+        ->assertStatus(403)
+        ->assertJsonPath('error', 'degraded_context');
+});
+
+// ── the leg (IR-073, D5 in plan 68) ─────────────────────────────────────────
+
+// Falsifiability: drop the leg check and the extension token is served.
+it('refuses an Extensions token on a route that did not opt in', function () {
+    fakeRoad(fn () => Http::response(['data' => bridgeCtx(['leg' => 'extensions', 'businessUnitId' => 'bu-a'])]));
+    bridgeRoute('road.bridge:read:Charge,buId', '/bu/{buId}/charges');
+
+    $this->getJson('/bu/bu-a/charges', ['Authorization' => 'Bearer '.brokered()])
+        ->assertStatus(403)
+        ->assertJsonPath('error', 'wrong_leg');
+});
+
+it('refuses a Bridge token on an Extensions route', function () {
+    fakeRoad(fn () => Http::response(['data' => bridgeCtx(['businessUnitId' => 'bu-a', 'onBehalfOfUser' => 'user-42'])]));
+    bridgeRoute('road.bridge:read:Charge,buId,userId,extensions', '/bu/{buId}/users/{userId}/charges');
+
+    $this->getJson('/bu/bu-a/users/user-42/charges', ['Authorization' => 'Bearer '.brokered()])
+        ->assertStatus(403)
+        ->assertJsonPath('error', 'wrong_leg');
+});
+
+it("serves both legs on a route that says 'any'", function () {
+    fakeRoad(fn (HttpRequest $r) => Http::response(['data' => $r->data()['brokeredToken'] === brokered(['jti' => 'ext'])
+        ? bridgeCtx(['leg' => 'extensions', 'businessUnitId' => 'bu-a'])
+        : bridgeCtx(['businessUnitId' => 'bu-a'])]));
+    bridgeRoute('road.bridge:read:Charge,buId,,any', '/bu/{buId}/charges');
+
+    $this->getJson('/bu/bu-a/charges', ['Authorization' => 'Bearer '.brokered(['jti' => 'ext'])])->assertOk()
+        ->assertJsonPath('context.leg', 'extensions');
+    $this->getJson('/bu/bu-a/charges', ['Authorization' => 'Bearer '.brokered(['jti' => 'brg'])])->assertOk()
+        ->assertJsonPath('context.leg', 'bridge');
+});
+
+it('fails loud on a leg it does not know', function () {
+    fakeRoad(fn () => Http::response(['data' => bridgeCtx()]));
+    bridgeRoute('road.bridge:read:Charge,,,extension');
+
+    $this->withoutExceptionHandling();
+    expect(fn () => $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()]))
+        ->toThrow(LogicException::class, 'the leg must be');
+});
+
+// ── a configured resolver makes the binding mandatory (D5) ──────────────────
+
+// Falsifiability: drop the `$tenantResolver !== null && businessUnitId === null`
+// refusal and a token naming no business unit reads a tenant-scoped route.
+it('refuses a token that names no business unit on a tenant-scoped route', function () {
+    fakeRoad(fn () => Http::response(['data' => bridgeCtx()]));
+    bridgeRoute('road.bridge:read:Charge,buId', '/bu/{buId}/charges');
+
+    $this->getJson('/bu/bu-a/charges', ['Authorization' => 'Bearer '.brokered()])
+        ->assertStatus(403)
+        ->assertJsonPath('error', 'cross_tenant');
+});
+
+// Falsifiability: drop the acting-user counterpart and an unattended token
+// reads a route that is about one person.
+it('refuses a token minted with no person present on a per-person route', function () {
+    fakeRoad(fn () => Http::response(['data' => bridgeCtx(['leg' => 'extensions', 'businessUnitId' => 'bu-a'])]));
+    bridgeRoute('road.bridge:read:Charge,buId,userId,extensions', '/bu/{buId}/users/{userId}/charges');
+
+    $this->getJson('/bu/bu-a/users/user-42/charges', ['Authorization' => 'Bearer '.brokered()])
+        ->assertStatus(403)
+        ->assertJsonPath('error', 'cross_user');
+});
+
+// Falsifiability: gate the degraded refusal on the tenant resolver alone, as it
+// was, and this answers `cross_user` instead.
+it('refuses a degraded answer when only the person is bound', function () {
+    fakeDegradedRoad(bridgeCtx(['degraded' => true]));
+    EnforceBridgeGrant::resolveActingUserUsing(fn (Request $r) => $r->header('X-User'));
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered(), 'X-User' => 'user-42'])
         ->assertStatus(403)
         ->assertJsonPath('error', 'degraded_context');
 });

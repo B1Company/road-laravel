@@ -11,6 +11,20 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: `road.bridge` accepts one leg per route** (IR-073, plan 68).
+  A fourth argument names it: `bridge` (default), `extensions` or `any`. A
+  token from another leg is refused with `wrong_leg`, so the routes an
+  installed extension's backend calls must say
+  `road.bridge:<permission>,<tenant source>,,extensions`. An unknown leg throws
+  a `LogicException` (a 500) instead of refusing every request.
+- **A configured source makes its binding mandatory.** With a tenant source, a
+  token naming no business unit is refused (`cross_tenant`); with an
+  acting-user source, a token minted with no person present is refused
+  (`cross_user`). A degraded answer is refused when either is configured, not
+  only the tenant one.
+
 ## [0.1.0-alpha.4] — 2026-09-25
 
 ### Security

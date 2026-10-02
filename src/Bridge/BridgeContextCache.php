@@ -24,9 +24,9 @@ use Illuminate\Support\Str;
  *   raw bearer never sits in the cache store.
  * - **No entry outlives the token.** An entry stops being usable at the
  *   earlier of Road's `expiresAt` and the token's own `exp`, whatever the TTL
- *   says. The Node middleware does not do this yet (B1-472) and honours an
- *   expired token for up to a minute; this one never does, not even while
- *   serving stale during an outage.
+ *   says, and not even while serving stale during an outage. The Node
+ *   middleware does the same since B1-728 (it used to honour an expired token
+ *   for up to a minute, B1-472).
  *
  * A grant revocation flushes every entry at once ({@see flush()}). The
  * `bridge.grant.revoked` payload names the consumer platform, not the tokens

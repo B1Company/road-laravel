@@ -29,12 +29,23 @@ use Throwable;
  *   Route::middleware('road.bridge:read:Charge')->get('/charges', …);
  *   Route::middleware('road.bridge:read:Charge,buId')->get('/bu/{buId}/charges', …);
  *   Route::middleware('road.bridge:read:Charge,buId,userId')->get('/bu/{buId}/users/{userId}/charges', …);
+ *   Route::middleware('road.bridge:read:Course,buId,,extensions')->get('/bu/{buId}/courses', …);
  *
  * Args: the permission the route requires (omit to only resolve the context),
  * then where to read the tenant this request touches, then the end-user it is
- * for. A source is a route-parameter name or `input:<key>`. For anything
- * else, register a resolver once with {@see resolveTenantUsing()} /
- * {@see resolveActingUserUsing()}.
+ * for, then the leg the route accepts. A source is a route-parameter name or
+ * `input:<key>`. For anything else, register a resolver once with
+ * {@see resolveTenantUsing()} / {@see resolveActingUserUsing()}.
+ *
+ * **The leg** is `bridge` (default: a consumer platform's Bridge token),
+ * `extensions` (an installed extension's data-leg token) or `any`. A token
+ * from another leg is refused with `wrong_leg` before any other check.
+ *
+ * **A configured resolver makes its binding mandatory.** On a route with a
+ * tenant source, a token that names no business unit is refused
+ * (`cross_tenant`); with an acting-user source, a token minted with no person
+ * present is refused (`cross_user`). Leave the acting-user source out on
+ * routes that serve unattended data-leg calls.
  *
  * Per request it:
  *
@@ -59,6 +70,9 @@ final class EnforceBridgeGrant
 {
     /** Request attribute carrying the attempt to report after the response. */
     private const ATTEMPT = 'roadBridgeAttempt';
+
+    /** The legs a route may accept. Mirrors the Node SDK's `leg` option. */
+    private const LEGS = ['bridge', 'extensions', 'any'];
 
     /** Verbs treated as read-only for TTL purposes. Mirrors the Node SDK. */
     private const READ_ACTIONS = ['read', 'list', 'view', 'get'];
@@ -106,8 +120,17 @@ final class EnforceBridgeGrant
         string $permission = '',
         string $tenantSource = '',
         string $actingUserSource = '',
+        string $leg = '',
     ): Response {
         $permission = $permission !== '' ? $permission : null;
+        $leg = $leg !== '' ? $leg : 'bridge';
+        if (! in_array($leg, self::LEGS, true)) {
+            // A configuration error, not the consumer's fault: a 500, not a 403
+            // that would send them chasing their own token.
+            throw new LogicException(
+                "road.bridge: the leg must be 'bridge', 'extensions' or 'any', got '{$leg}'.",
+            );
+        }
 
         $token = $request->bearerToken();
         if ($token === null || trim($token) === '') {
@@ -180,14 +203,43 @@ final class EnforceBridgeGrant
         $tenantResolver = $this->resolver($tenantSource, self::$tenantResolver);
         $actingUserResolver = $this->resolver($actingUserSource, self::$actingUserResolver);
 
-        // A degraded answer carries no tenant, so on a tenant-scoped surface it
-        // cannot be checked and must not be served.
-        if ($context->degraded && $tenantResolver !== null) {
+        // The leg first: every check below assumes the kind of token this route
+        // was written for.
+        if ($leg !== 'any' && $context->leg !== $leg) {
+            return $this->deny(
+                403,
+                'wrong_leg',
+                $leg === 'bridge'
+                    ? 'This route accepts Bridge tokens, and this token was minted by the Extensions data leg.'
+                    : 'This route accepts Extensions data-leg tokens, and this token was minted by Bridge.',
+                $permission,
+                $key,
+            );
+        }
+
+        // A degraded answer carries no tenant and no person, so on a surface
+        // bound to either it cannot be checked and must not be served.
+        if ($context->degraded && ($tenantResolver !== null || $actingUserResolver !== null)) {
             return $this->deny(
                 403,
                 'degraded_context',
                 'Road could not resolve what this token was minted for and answered from the provider grant instead. '
-                .'That answer carries no tenant, so it cannot authorize a tenant-scoped request.',
+                .'That answer names no business unit and no person, so it cannot authorize a request bound to either.',
+                $permission,
+                $key,
+            );
+        }
+
+        // A configured resolver says the route is scoped: a token naming nothing
+        // to compare is refused rather than waved through.
+        if ($tenantResolver !== null && $context->businessUnitId === null) {
+            return $this->deny(403, 'cross_tenant', 'This route is scoped to a business unit, and this token names none.', $permission, $key);
+        }
+        if ($actingUserResolver !== null && $context->onBehalfOfUser === null) {
+            return $this->deny(
+                403,
+                'cross_user',
+                'This route is for a specific person, and this token was minted with no person present.',
                 $permission,
                 $key,
             );
