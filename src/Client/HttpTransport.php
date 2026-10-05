@@ -34,6 +34,12 @@ final class HttpTransport implements HttpTransportInterface
 {
     private const MAX_BACKOFF_MS = 10_000;
 
+    /** Seconds per attempt, in place of `road.api.timeout`. Set by {@see withLimits()}. */
+    private int|float|null $timeoutOverride = null;
+
+    /** A ceiling on `road.api.retry.max_attempts`. Set by {@see withLimits()}. */
+    private ?int $maxAttemptsCeiling = null;
+
     public function __construct(
         private readonly HttpFactory $http,
         private readonly RoadContext $context,
@@ -41,6 +47,22 @@ final class HttpTransport implements HttpTransportInterface
         private readonly RoadTelemetry $telemetry,
         private readonly ?ServiceTokenStore $serviceTokens = null,
     ) {}
+
+    /**
+     * A copy of this transport that gives each attempt `$timeout` seconds and
+     * makes at most `$maxAttempts` of them. For a caller on a request path,
+     * where an outage must fail in seconds rather than after the general
+     * defaults (10 s per attempt, three attempts). The ceiling only lowers the
+     * configured attempts: with retries disabled, it stays one.
+     */
+    public function withLimits(int|float $timeout, int $maxAttempts): self
+    {
+        $bounded = clone $this;
+        $bounded->timeoutOverride = $timeout;
+        $bounded->maxAttemptsCeiling = max(1, $maxAttempts);
+
+        return $bounded;
+    }
 
     /**
      * @param  array<string,mixed>|null  $body
@@ -78,10 +100,13 @@ final class HttpTransport implements HttpTransportInterface
         }
 
         $url = $this->buildUrl($path);
-        $timeout = (int) $this->config->get('road.api.timeout', 10);
+        $timeout = $this->timeoutOverride ?? (int) $this->config->get('road.api.timeout', 10);
 
         $retryEnabled = (bool) $this->config->get('road.api.retry.enabled', true);
         $maxAttempts = $retryEnabled ? max(1, (int) $this->config->get('road.api.retry.max_attempts', 3)) : 1;
+        if ($this->maxAttemptsCeiling !== null) {
+            $maxAttempts = min($maxAttempts, $this->maxAttemptsCeiling);
+        }
         $baseDelayMs = max(0, (int) $this->config->get('road.api.retry.base_delay_ms', 250));
 
         $headers = [

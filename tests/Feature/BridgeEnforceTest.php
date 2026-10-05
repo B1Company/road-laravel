@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Sleep;
 
 /**
  * `road.bridge` — the Laravel port of `bridgeEnforce()` from
@@ -44,7 +45,8 @@ function bridgeCtx(array $overrides = []): array
 
 /**
  * Fake Road: the Auth Server hands out a service token, attempts are accepted,
- * and `/bridge/authorize` answers with whatever `$authorize` returns.
+ * and `/bridge/authorize` answers with whatever `$authorize` returns. It also
+ * receives the Guzzle options the call went out with (its `timeout`, say).
  */
 function fakeRoad(Closure $authorize, ?Closure $attempts = null): void
 {
@@ -56,7 +58,7 @@ function fakeRoad(Closure $authorize, ?Closure $attempts = null): void
         'road.platform_bridge.cache_store' => 'array',
     ]);
 
-    Http::fake(function (HttpRequest $request) use ($authorize, $attempts) {
+    Http::fake(function (HttpRequest $request, array $options) use ($authorize, $attempts) {
         $url = $request->url();
 
         return match (true) {
@@ -68,7 +70,7 @@ function fakeRoad(Closure $authorize, ?Closure $attempts = null): void
             ]),
             str_ends_with($url, '/oauth/v2/token') => Http::response(['access_token' => 'svc-token', 'expires_in' => 3600]),
             str_ends_with($url, '/bridge/authorize/attempts') => $attempts !== null ? $attempts($request) : Http::response(null, 202),
-            str_ends_with($url, '/bridge/authorize') => $authorize($request),
+            str_ends_with($url, '/bridge/authorize') => $authorize($request, $options),
             default => Http::response(null, 404),
         };
     });
@@ -457,6 +459,9 @@ it('fails closed with 503 when Road is unreachable and nothing is cached', funct
         ->assertJsonPath('error', 'authorization_unavailable');
 });
 
+// The default the Node SDK now shares (D4 in plan 68). Falsifiability: set the
+// `max_staleness` default in config/road.php to 300 and the second request is
+// served the cached allow.
 it('fails closed by default even with a stale answer cached', function () {
     $this->freezeTime();
     $calls = 0;
@@ -511,6 +516,87 @@ it('does not answer an explicit refusal from Road with a cached allow', function
     $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])
         ->assertStatus(403)
         ->assertJsonPath('error', 'not_authorized');
+});
+
+// Falsifiability: drop the `forget()` on a decision and the third request is
+// served, stale, the allow Road refused on the second.
+it('forgets a cached allow once Road refuses, so a later outage cannot serve it', function () {
+    Sleep::fake();
+    $calls = 0;
+    fakeRoad(function () use (&$calls) {
+        return match (++$calls) {
+            1 => Http::response(['data' => bridgeCtx()]),
+            2 => Http::response(['type' => 'x', 'title' => 'GRANT_REVOKED', 'status' => 403], 403),
+            default => throw new ConnectionException('Connection refused'),
+        };
+    });
+    config(['road.platform_bridge.read_ttl' => 0, 'road.platform_bridge.max_staleness' => 600]);
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertOk();
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertStatus(403);
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])
+        ->assertStatus(503)
+        ->assertJsonPath('error', 'authorization_unavailable');
+});
+
+// ── how long a request waits on Road ────────────────────────────────────────
+
+// Falsifiability: hand the middleware the unbounded `$client->bridge()` and
+// this records three attempts of 10 s (`road.api.timeout` and its retries).
+it('gives Road two short attempts, then fails closed', function () {
+    Sleep::fake();
+    $timeouts = [];
+    fakeRoad(function (HttpRequest $request, array $options) use (&$timeouts) {
+        $timeouts[] = $options['timeout'] ?? null;
+        throw new ConnectionException('Operation timed out');
+    });
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])
+        ->assertStatus(503)
+        ->assertJsonPath('error', 'authorization_unavailable');
+
+    expect($timeouts)->toBe([2.0, 2.0]);
+});
+
+it('takes the per-attempt timeout from authorize_timeout', function () {
+    Sleep::fake();
+    $timeouts = [];
+    fakeRoad(function (HttpRequest $request, array $options) use (&$timeouts) {
+        $timeouts[] = $options['timeout'] ?? null;
+        throw new ConnectionException('Operation timed out');
+    });
+    config(['road.platform_bridge.authorize_timeout' => 0.5]);
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertStatus(503);
+
+    expect($timeouts)->toBe([0.5, 0.5]);
+});
+
+it('never retries more than the client is configured to', function () {
+    $attempts = 0;
+    fakeRoad(function () use (&$attempts) {
+        $attempts++;
+        throw new ConnectionException('Operation timed out');
+    });
+    config(['road.api.retry.enabled' => false]);
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertStatus(503);
+
+    expect($attempts)->toBe(1);
+});
+
+it('fails loud on an authorize_timeout the HTTP client would read as no timeout', function () {
+    fakeRoad(fn () => Http::response(['data' => bridgeCtx()]));
+    config(['road.platform_bridge.authorize_timeout' => 0]);
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->withoutExceptionHandling();
+    expect(fn () => $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()]))
+        ->toThrow(LogicException::class, 'authorize_timeout');
 });
 
 it('fails loud when no service credential is configured', function () {

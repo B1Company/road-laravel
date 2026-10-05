@@ -28,7 +28,8 @@ use Illuminate\Support\Str;
  *   middleware does the same since B1-728 (it used to honour an expired token
  *   for up to a minute, B1-472).
  *
- * A grant revocation flushes every entry at once ({@see flush()}). The
+ * A refusal from Road drops that token's entry ({@see forget()}), and a grant
+ * revocation flushes every entry at once ({@see flush()}). The
  * `bridge.grant.revoked` payload names the consumer platform, not the tokens
  * minted under it, so there is no narrower set to evict. Revocations are rare
  * and a flush only costs one Road call per token on its next request.
@@ -139,6 +140,16 @@ final class BridgeContextCache
     public function isDegraded(string $key, string $generation): bool
     {
         return $this->store()->get(self::PREFIX.'degraded:'.$generation.':'.$key) === true;
+    }
+
+    /**
+     * Drop the cached context for one token. Called when Road refuses it: kept,
+     * a warm allow would outlive that refusal and be served stale during a later
+     * outage (when `max_staleness` is raised).
+     */
+    public function forget(string $key, string $generation): void
+    {
+        $this->store()->forget($this->contextKey($key, $generation));
     }
 
     /** Drop every cached context. Wired to `bridge.grant.revoked` and `extension.install.uninstalled`. */
