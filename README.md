@@ -293,7 +293,11 @@ Every error thrown by the SDK is a `RoadException` subclass:
 | `RoadApiException` | varies | varies | Catch-all for non-mapped statuses |
 
 All errors are parsed from the API's RFC 7807 Problem Details and carry a stable
-`code`, a `requestId`, and a `docs` URL.
+`code`, a `requestId`, and a `docs` URL. When the API names the specific refusal
+(Road API v0.43.0 and later: `MEMBER_NOT_FOUND`, `PLATFORM_NOT_ACTIVE`, …),
+`errorCode` carries that code; the values in the table are the fallback when it
+does not. Branch on the exception class for the category and on `errorCode` for
+the case.
 
 The `road.errors` middleware (auto-applied to `auth/road/*`,
 `/road/whoami`, and `/road-api/*`) renders these as:

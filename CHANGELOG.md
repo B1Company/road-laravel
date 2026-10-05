@@ -11,6 +11,8 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5] — 2026-10-05
+
 ### Changed
 
 - **Breaking: `road.bridge` accepts one leg per route** (IR-073, plan 68).
@@ -24,6 +26,14 @@ contract from `alpha` to `v1` (see
   acting-user source, a token minted with no person present is refused
   (`cross_user`). A degraded answer is refused when either is configured, not
   only the tenant one.
+- **`RoadException::$errorCode` carries the API's specific code when it sends
+  one.** Road's problem bodies now include a `code` on refusals
+  (`MEMBER_NOT_FOUND`, `PLATFORM_NOT_ACTIVE`, …), and the error mapper already
+  preferred it, so on API v0.43.0 and later `errorCode` reads that code instead
+  of the generic `not_found` / `conflict` / `validation_error` listed in the
+  README. This is visible on alpha.4 as well, since it comes from the API.
+  Branch on the exception class for the category and on `errorCode` for the
+  specific case.
 
 ## [0.1.0-alpha.4] — 2026-09-25
 
