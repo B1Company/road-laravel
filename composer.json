@@ -12,8 +12,8 @@
         }
     ],
     "support": {
-        "issues": "https://github.com/B1Company/road/issues",
-        "source": "https://github.com/B1Company/road/tree/main/apps/sdks/road-laravel",
+        "email": "contato@b1.app",
+        "source": "https://github.com/B1Company/road-laravel",
         "docs": "https://portal.plat.eduzz.com"
     },
     "keywords": ["road", "laravel", "iam", "rbac", "auth", "oidc", "bff", "b1"],
