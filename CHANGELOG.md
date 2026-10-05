@@ -11,6 +11,15 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Changed
+
+- **The Inertia provider lives here alone.** `RoadInertiaProvider`
+  (`resources/js/road-inertia-provider.tsx`, copied into your app by
+  `road:install`) mirrored the npm package `@b1-road/laravel-react`, which was
+  retired without ever being published. Its errors now start with
+  `[b1-road/laravel]` instead of naming that package. To pick up the new copy,
+  run `php artisan vendor:publish --tag=road-inertia --force`.
+
 ## [0.1.0-alpha.5] — 2026-10-05
 
 ### Changed

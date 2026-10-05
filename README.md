@@ -67,8 +67,20 @@ Road API client.
 
 ### 2. Render Road widgets in Inertia
 
+`road:install` already copied the React provider into your app, at
+`resources/js/lib/road-inertia-provider.tsx`. It is a file you own, not an npm
+package (there is none for it). To copy it on its own, or to refresh it after
+upgrading this package:
+
 ```bash
-php artisan vendor:publish --tag=road-inertia
+php artisan vendor:publish --tag=road-inertia --force
+```
+
+The provider imports `@b1-road/react` and `@inertiajs/react`, so install them
+from npm:
+
+```bash
+npm install @b1-road/react @inertiajs/react
 ```
 
 Wrap your app:
