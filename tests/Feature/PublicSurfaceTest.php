@@ -48,7 +48,7 @@ it('resolves the Road facade to the manager with its documented methods', functi
     expect(Road::getFacadeRoot())->toBeInstanceOf(RoadManager::class);
 
     foreach ([
-        'user', 'userId', 'token', 'isAuthenticated', 'context', 'requestId',
+        'user', 'userId', 'roadUserId', 'token', 'isAuthenticated', 'context', 'requestId',
         'client', 'can', 'canMany', 'assert', 'asService', 'fake',
     ] as $method) {
         expect(method_exists(RoadManager::class, $method))->toBeTrue("RoadManager::{$method}() is missing");

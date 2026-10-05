@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Facade;
 /**
  * @method static RoadUser|null user()
  * @method static string|null userId()
+ * @method static string|null roadUserId()
  * @method static string|null token()
  * @method static bool isAuthenticated()
  * @method static RoadContext context()

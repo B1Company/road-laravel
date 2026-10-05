@@ -43,6 +43,9 @@ trait ActsAsRoadUser
                 'email' => $user->email,
                 'name' => $user->name,
             ],
+            // The scenario names a person by one id, so `Road::roadUserId()`
+            // answers it without a profile read.
+            roadUserId: $userId,
         ));
 
         return $this;

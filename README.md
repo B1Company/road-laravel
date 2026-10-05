@@ -65,6 +65,15 @@ Route::middleware('road')->group(function () {
 session-stored Auth Server tokens. `Road::client()` exposes the typed
 Road API client.
 
+**One person, two ids.** `Road::userId()` is the Auth Server user id: the key
+for anything you store against your own login. `Road::roadUserId()` is the
+Road user id, the one Bridge (`onBehalfOfUser`, the person a provider route
+names), IAM subjects and webhook payloads (`userId`) carry. Sending one where
+the other is expected is refused or matches nobody. The SDK reads
+`roadUserId()` from Road the first time a session asks and keeps it with the
+session's tokens. If Road can't be reached, it throws the client's exception
+instead of handing you the wrong id.
+
 ### 2. Render Road widgets in Inertia
 
 ```bash
