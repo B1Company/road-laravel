@@ -39,7 +39,7 @@ final class InMemoryBackend
         $path = '/'.ltrim($path, '/');
 
         // ── Identity & self ────────────────────────────────────────────────
-        if ($method === 'GET' && $path === '/iam/identity/me') {
+        if ($method === 'GET' && $path === '/me/profile') {
             $user = $userId !== null ? $this->scenario->findUser($userId) : null;
             if ($user === null) {
                 throw new RoadNotFoundException('No active user in scenario.');

@@ -11,6 +11,12 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Fixed
+
+- **`Road::client()->me()->get()` reads `/me/profile`.** It asked
+  `/iam/identity/me`, a route the API no longer serves, so the call failed
+  with a 404 against every live Road. The test backend answers the new path.
+
 ## [0.1.0-alpha.5] — 2026-10-05
 
 ### Changed
