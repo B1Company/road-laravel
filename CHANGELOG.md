@@ -11,6 +11,25 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Changed
+
+- **A refusal from Road drops the token's cached answer** (D4 in plan 68,
+  B1-712). `road.bridge` never answered a refusal from cache, but it kept the
+  entry, so with `max_staleness` raised a later outage could serve an allow
+  Road had already refused. Now any 4xx other than 408/429 forgets that token
+  (`BridgeContextCache::forget()`).
+- **`road.bridge` waits on Road for seconds, not half a minute.** The
+  authorize call gets `road.platform_bridge.authorize_timeout` seconds per
+  attempt (default 2, `ROAD_PLATFORM_BRIDGE_AUTHORIZE_TIMEOUT`) and one retry,
+  so an outage answers `503` in about 4 s instead of after `api.timeout` (10 s)
+  and three attempts. A value of 0 or less throws a `LogicException`, because
+  the HTTP client reads 0 as no timeout at all. It never retries more than
+  `api.retry` allows. The bound comes from a new
+  `HttpTransport::withLimits()`.
+- The fail mode itself is unchanged here (`max_staleness` 0, fail-closed). The
+  Node SDK now has the same default and the same rules, so the two
+  middlewares behave alike when Road is down.
+
 ## [0.1.0-alpha.5] — 2026-10-05
 
 ### Changed
