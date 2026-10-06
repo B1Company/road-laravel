@@ -312,6 +312,8 @@ Every error thrown by the SDK is a `RoadException` subclass:
 | `RoadServerException` | 5xx | `server_error` | Retried with backoff (transient) |
 | `RoadNetworkException` | 502 | `network_error` | Unreachable upstream — retried with backoff |
 | `RoadApiException` | varies | varies | Catch-all for non-mapped statuses |
+| `RoadBridgeExchangeException` | Road's | the OAuth `error` (`BU_NOT_SUBSCRIBED_TO_PLATFORM`, …) | `bridge()->exchangeForUser()` refused. Carries `description` and, on `RATE_LIMITED`, `retryAfter` |
+| `RoadBridgeSetupException` | 500 | `service_credentials_missing`, `platform_id_missing`, `person_required` | A Bridge consumer helper is not set up; thrown before anything is sent |
 | `RoadExtensionSessionException` | 401 | `malformed`, `signature_mismatch`, `expired`, … | `ExtensionSessionVerifier` refused an embed session context (see [Platform Extensions](#platform-extensions-verifying-the-embed-session)) |
 
 All errors are parsed from the API's RFC 7807 Problem Details and carry a stable
@@ -411,6 +413,45 @@ expiry, with a lock so concurrent workers don't stampede), and re-acquires
 transparently on a 401. `asService()` uses a dedicated context, so a request
 handler can call `Road::user()` *and* dispatch a job with `Road::asService()`
 without cross-contamination.
+
+## Platform Bridge: calling another platform
+
+As a consumer, every Bridge call acts for the signed-in person in one business
+unit. Inside a `road`-protected route, one call gets a token for the provider:
+
+```php
+use B1Road\Laravel\Exceptions\RoadBridgeExchangeException;
+
+try {
+    $token = Road::client()->bridge()->exchangeForUser(
+        audience: 'plat_provider',      // the provider platform
+        scope: ['read:Task'],           // permission codes, never a template name
+        businessUnitId: $buId,
+    );
+    // call the provider with "Authorization: Bearer {$token['access_token']}"
+} catch (RoadBridgeExchangeException $e) {
+    // $e->errorCode() is Road's code; $e->description says what happened and the next step
+}
+```
+
+It needs the service credential (`ROAD_SERVICE_CLIENT_ID` /
+`ROAD_SERVICE_CLIENT_SECRET`, see above) and your platform
+(`ROAD_PLATFORM_ID`). What it does, in order:
+
+1. Asks Road for a **presence assertion** for that business unit with the
+   person's session (`POST /bridge/presence-assertions`).
+   `Road::client()->bridge()->presenceAssertion($buId)` is this step alone.
+2. Exchanges your platform's **service credential** for a token audienced at
+   the provider (`POST /bridge/token-exchange`), with `business_unit` and
+   `presence_assertion` alongside the RFC 8693 fields. The person's token never
+   goes on this call.
+
+A refusal from the exchange throws `RoadBridgeExchangeException` with the code
+from the guide's table. The only automatic retry is one fresh service token on
+`invalid_token`. A missing credential, platform id or signed-in person throws
+`RoadBridgeSetupException` before anything is sent. There is no unattended
+form: a job with nobody logged in cannot make a Bridge call. The full flow and
+every refusal are in `road_guide('bridge')`.
 
 ## Platform Bridge: accepting another platform's calls
 
@@ -654,6 +695,7 @@ The full config shape is published to `config/road.php`:
 | `road.inertia.enabled` | Inject `props.road` into Inertia shared props (default true) |
 | `road.debug.header_enabled` | Surface `DecisionTrace` on errors when `X-Road-Debug: 1` |
 | `road.service.*` | Service-to-service credentials for `Road::asService()` |
+| `road.platform_id` | Your platform's `plat_…` (`ROAD_PLATFORM_ID`), which a Bridge presence assertion is bound to |
 | `road.webhooks.*` | Webhook receiver: `enabled`, `path`, `secret`, `tolerance`, `verify` |
 | `road.platform_bridge.*` | `road.bridge` middleware: `cache_store`, `read_ttl` (60), `write_ttl` (5), `max_staleness` (0, fail-closed), `authorize_timeout` (2), `strict_tenancy`, `strict_acting_user`, `report_attempts` |
 

@@ -136,17 +136,50 @@ final class RoadManager
         /** @var ConfigRepository $config */
         $config = $this->container->make(ConfigRepository::class);
 
-        $credentials = ServiceCredentials::fromConfig($config);
-        if ($credentials === null) {
+        $serviceContext = new RoadContext;
+        $serviceContext->setServiceMode(true);
+        $serviceContext->setRequestId($this->context->requestId());
+
+        $transport = $this->serviceTransport($serviceContext);
+        if ($transport === null) {
             throw new RoadAuthnException(
                 message: 'Road::asService() requires service credentials. Set ROAD_SERVICE_CLIENT_ID + ROAD_SERVICE_CLIENT_SECRET (or the private_key_jwt config).',
                 errorCode: 'service_credentials_missing',
             );
         }
 
-        $serviceContext = new RoadContext;
-        $serviceContext->setServiceMode(true);
-        $serviceContext->setRequestId($this->context->requestId());
+        $client = new RoadClient(
+            $transport,
+            $serviceContext,
+            fn (): ?HttpTransport => $this->serviceTransport(),
+            (string) $config->get('road.platform_id', ''),
+        );
+
+        return new self($this->container, $serviceContext, $client, $transport);
+    }
+
+    /**
+     * A transport that calls Road as your platform, with the `road.service.*`
+     * credential, or null when none is configured. `asService()` and the
+     * Bridge exchange share it.
+     *
+     * @internal
+     */
+    public function serviceTransport(?RoadContext $serviceContext = null): ?HttpTransport
+    {
+        /** @var ConfigRepository $config */
+        $config = $this->container->make(ConfigRepository::class);
+
+        $credentials = ServiceCredentials::fromConfig($config);
+        if ($credentials === null) {
+            return null;
+        }
+
+        if ($serviceContext === null) {
+            $serviceContext = new RoadContext;
+            $serviceContext->setServiceMode(true);
+            $serviceContext->setRequestId($this->context->requestId());
+        }
 
         $store = new ServiceTokenStore(
             $this->container->make(OidcDiscovery::class),
@@ -156,15 +189,13 @@ final class RoadManager
             $credentials,
         );
 
-        $transport = new HttpTransport(
+        return new HttpTransport(
             $this->container->make(HttpFactory::class),
             $serviceContext,
             $config,
             $this->container->make(RoadTelemetry::class),
             $store,
         );
-
-        return new self($this->container, $serviceContext, new RoadClient($transport), $transport);
     }
 
     /**
@@ -192,7 +223,14 @@ final class RoadManager
             $this->container->make(RoadTelemetry::class),
         );
 
-        return new self($this->container, $userContext, new RoadClient($transport), $transport);
+        $client = new RoadClient(
+            $transport,
+            $userContext,
+            fn (): ?HttpTransport => $this->serviceTransport(),
+            (string) $config->get('road.platform_id', ''),
+        );
+
+        return new self($this->container, $userContext, $client, $transport);
     }
 
     // -- Authorization -----------------------------------------------------

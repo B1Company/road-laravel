@@ -194,6 +194,41 @@ final class HttpTransport implements HttpTransportInterface
         }
     }
 
+    /**
+     * The service credential's access token, for the one route that takes it
+     * in the body (`POST /bridge/token-exchange`). Null outside service mode.
+     * `$fresh` drops the cached token first.
+     *
+     * @internal Used by the Bridge resource; never log what it returns.
+     */
+    public function serviceToken(bool $fresh = false): ?string
+    {
+        if ($this->serviceTokens === null || ! $this->context->isServiceMode()) {
+            return null;
+        }
+        if ($fresh) {
+            $this->serviceTokens->invalidate();
+        }
+
+        return $this->serviceTokens->getToken();
+    }
+
+    /**
+     * A copy that sends `$token` as its bearer and never swaps it. The Bridge
+     * exchange carries the service token in its body too, so a transport that
+     * refreshed the bearer on a 401 would only resend a stale body.
+     *
+     * @internal Used by the Bridge resource.
+     */
+    public function bearing(string $token): self
+    {
+        $context = new RoadContext;
+        $context->setToken($token);
+        $context->setRequestId($this->context->requestId());
+
+        return new self($this->http, $context, $this->config, $this->telemetry);
+    }
+
     /** Only transient failures are retried; 4xx (incl. 429) never are. */
     private function shouldRetry(RoadException $error): bool
     {
