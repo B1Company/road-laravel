@@ -11,8 +11,24 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+The generated DTOs in `src/DTO/Generated/` were regenerated from a contract
+hub that had not been re-emitted since 2026-08-21 (plan 68, N23). They now
+match the API again, and CI now fails any API change that leaves the
+committed hub behind, so it should not drift again.
+
 ### Changed
 
+- **Breaking: `TokenExchangeRequestDto` requires `business_unit` and
+  `presence_assertion`.** The API has required both on the Bridge token
+  exchange since B1-618, so a request built from the old DTO was already
+  refused on shape. Building the DTO without them now fails in PHP, before
+  any request is sent.
+- **Breaking for positional construction: new optional properties sit in the
+  middle of two constructors.** `CreatePlatformDto` gains `description` after
+  `slug`, and `UpdateOperationalDto` gains `releaseVersion`, `description` and
+  `showcaseOptIn` before `zitadelClientId`. Named arguments and `::from([...])`
+  are unaffected. If you pass these arguments by position, switch to named
+  ones.
 - **A refusal from Road drops the token's cached answer** (D4 in plan 68,
   B1-712). `road.bridge` never answered a refusal from cache, but it kept the
   entry, so with `max_staleness` raised a later outage could serve an allow
@@ -32,6 +48,13 @@ contract from `alpha` to `v1` (see
 - The fail mode itself is unchanged here (`max_staleness` 0, fail-closed). The
   Node SDK now has the same default and the same rules, so the two
   middlewares behave alike when Road is down.
+
+### Added
+
+- `CreateDeveloperPlatformDto::$description` (optional, last argument).
+- `IssuePresenceAssertionDto`, the body of `POST bridge/presence-assertions`.
+- `PlatformFunnelResponse`, `PlatformFunnelView` and `PlatformFunnelStepView`,
+  the response of `GET developer/platforms/{publicId}/funnel`.
 
 ## [0.1.0-alpha.5] — 2026-10-05
 
