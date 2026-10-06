@@ -17,7 +17,9 @@ contract from `alpha` to `v1` (see
   B1-712). `road.bridge` never answered a refusal from cache, but it kept the
   entry, so with `max_staleness` raised a later outage could serve an allow
   Road had already refused. Now any 4xx other than 408/429 forgets that token
-  (`BridgeContextCache::forget()`).
+  (`BridgeContextCache::forget()`). For a minute after, no allow for that
+  token is cached, so one another worker was still fetching cannot put the
+  entry back.
 - **`road.bridge` waits on Road for seconds, not half a minute.** The
   authorize call gets `road.platform_bridge.authorize_timeout` seconds per
   attempt (default 2, `ROAD_PLATFORM_BRIDGE_AUTHORIZE_TIMEOUT`) and one retry,

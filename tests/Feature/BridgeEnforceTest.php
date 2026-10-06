@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use B1Road\Laravel\Bridge\BridgeAccessDenied;
 use B1Road\Laravel\Bridge\BridgeContext;
+use B1Road\Laravel\Bridge\BridgeContextCache;
 use B1Road\Laravel\Http\Middleware\EnforceBridgeGrant;
 use B1Road\Laravel\Webhooks\Events\BridgeGrantRevoked;
 use B1Road\Laravel\Webhooks\Payloads\BridgeGrantWebhookData;
@@ -538,6 +539,32 @@ it('forgets a cached allow once Road refuses, so a later outage cannot serve it'
     $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])
         ->assertStatus(503)
         ->assertJsonPath('error', 'authorization_unavailable');
+});
+
+// Two workers ask about the same token at once: one gets Road's allow, the
+// other its refusal, and the refusal's forget() runs while the allow is still
+// in flight. Falsifiability: drop the refusal mark (or its check in put()) and
+// the late allow is cached, so the second request is served from it.
+it('does not let an allow that was in flight restore a token Road has since refused', function () {
+    $token = brokered();
+    $calls = 0;
+    fakeRoad(function () use (&$calls, $token) {
+        if (++$calls === 1) {
+            // What the other worker's middleware does on Road's refusal.
+            $cache = app(BridgeContextCache::class);
+            $cache->forget(BridgeContextCache::keyFor($token), $cache->generation());
+
+            return Http::response(['data' => bridgeCtx()]);
+        }
+
+        return Http::response(['type' => 'x', 'title' => 'UNKNOWN_TOKEN', 'status' => 403], 403);
+    });
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.$token])->assertOk();
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.$token])
+        ->assertStatus(403)
+        ->assertJsonPath('error', 'not_authorized');
 });
 
 // ── how long a request waits on Road ────────────────────────────────────────
