@@ -516,6 +516,20 @@ sets the seconds), so during an outage the `503` comes in about 4 seconds, not
 after the client's general timeout and retries. The Node middleware follows
 the same rules with the same defaults.
 
+**Reading your platform's Bridge audit.** The platform's owner can list the
+Bridge traffic it took part in: `inbound` is other platforms reaching yours,
+`outbound` is yours reaching others. Each row is a `BridgeAuditEntry` naming
+the other platform, the event (`exchange`, `check`, `attempt`,
+`grant_created`, `grant_revoked`), the decision and a reason code. It needs the
+owner's user token, so call it through `Road::client()` on a request where the
+owner is signed in; the service credential gets 403.
+
+```php
+foreach (Road::client()->bridge()->audit('plat_…', 'inbound', allowed: false) as $row) {
+    logger()->info('bridge refusal', [$row->createdAt, $row->counterparty?->name, $row->reason]);
+}
+```
+
 ## Escape hatches
 
 When the typed surface doesn't cover something, drop a level — you never have to

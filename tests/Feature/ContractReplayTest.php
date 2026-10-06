@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use B1Road\Laravel\Client\Resources\RoleWire;
+use B1Road\Laravel\DTO\BridgeAuditEntry;
 use B1Road\Laravel\DTO\BusinessUnitDetail;
 use B1Road\Laravel\DTO\MyBusinessUnits;
 use B1Road\Laravel\DTO\Pagination;
@@ -84,6 +85,20 @@ it('decodes every recorded contract fixture through the matching DTO', function 
             $resolution = PlatformSubscriptionResolution::from($data);
             expect($resolution->subscriptionId)->toBe($data['subscriptionId']);
             expect($resolution->scopeId)->toBe($data['scopeId']);
+        })(),
+        'bridgeOwnerAuditList' => (function () use ($data) {
+            // A platform owner's Bridge audit row names the other platform and
+            // the decision, and nothing from the audit table behind it.
+            expect($data)->not->toBeEmpty();
+            foreach ($data as $row) {
+                expect(array_keys($row))->toEqualCanonicalizing(
+                    ['event', 'counterparty', 'permission', 'allowed', 'reason', 'createdAt'],
+                );
+                $entry = BridgeAuditEntry::from($row);
+                expect($entry->event)->toBe($row['event']);
+                expect($entry->permission)->toBe($row['permission']);
+                expect($entry->counterparty?->name)->toBe($row['counterparty']['name'] ?? null);
+            }
         })(),
         'webhookDelivery' => (function () use ($fixture) {
             // A delivery envelope `{ id, event, timestamp, data }` — decode its
