@@ -159,6 +159,12 @@ final class OidcProvider
         $idClaims = $this->verifyIdToken($tokens, expectedNonce: null);
 
         $tokenSet = $this->buildTokenSet($tokens, $idClaims, fallbackRefresh: $refreshToken);
+        // The token endpoint knows nothing of Road's id, and a refresh cannot
+        // change the person: keep it, or every rotation costs a profile read.
+        $roadUserId = $this->tokenStore->get()?->roadUserId;
+        if ($roadUserId !== null) {
+            $tokenSet = $tokenSet->withRoadUserId($roadUserId);
+        }
         $this->tokenStore->put($tokenSet);
 
         return $tokenSet;

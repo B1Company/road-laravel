@@ -13,8 +13,8 @@ use B1Road\Laravel\DTO\Role;
 
 /**
  * `Road::client()->me()->*` — the calling user's own surface. Mirrors
- * `apps/sdks/road-nestjs/src/client/resources/me.ts` and the same
- * underlying endpoints: `/iam/identity/me`, `/me/business-units`,
+ * `apps/sdks/road-node-core/src/client/resources/me.ts` and the same
+ * underlying endpoints: `/me/profile`, `/me/business-units`,
  * `/me/permissions`.
  */
 final class Me
@@ -27,9 +27,13 @@ final class Me
 
     public function __construct(private readonly HttpTransportInterface $http) {}
 
+    /**
+     * The caller's profile: `GET /me/profile`. Its `id` is the Road user id,
+     * not the Auth Server id `Road::userId()` returns.
+     */
     public function get(): CurrentUser
     {
-        $body = $this->http->request('GET', '/iam/identity/me');
+        $body = $this->http->request('GET', '/me/profile');
         $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
 
         return CurrentUser::from($data);

@@ -93,10 +93,22 @@ abstract class Paginates implements IteratorAggregate
         });
     }
 
+    /**
+     * Filters sent on every page, next to `cursor` and `limit`. A query string
+     * in `listPath()` would be dropped: the HTTP client replaces it with the
+     * query array.
+     *
+     * @return array<string,scalar>
+     */
+    protected function listQuery(): array
+    {
+        return [];
+    }
+
     /** @return PaginatedList<T> */
     protected function fetchPage(?string $cursor, ?int $limit): PaginatedList
     {
-        $query = [];
+        $query = $this->listQuery();
         if ($cursor !== null && $cursor !== '') {
             $query['cursor'] = $cursor;
         }

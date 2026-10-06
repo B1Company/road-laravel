@@ -25,11 +25,13 @@ function seedAuthedContext(): void
     $ctx->setRequestId('req_test_1');
 }
 
-it('calls /iam/identity/me and decodes into CurrentUser', function () {
+// `/me/profile` is the API's one "who am I" route. `/iam/identity/me` was
+// removed from the API, and this call kept asking it: a 404 in production.
+it('calls /me/profile and decodes into CurrentUser', function () {
     seedAuthedContext();
 
     Http::fake([
-        'api.road.test/api/alpha/iam/identity/me' => Http::response([
+        'api.road.test/api/alpha/me/profile' => Http::response([
             'data' => [
                 'id' => 'u_1',
                 'name' => 'User 1',
@@ -46,7 +48,8 @@ it('calls /iam/identity/me and decodes into CurrentUser', function () {
     expect($me->avatarUrl)->toBe('https://cdn.test/u1.png');
 
     Http::assertSent(function (HttpRequest $req) {
-        return $req->hasHeader('Authorization', 'Bearer test-access-token')
+        return $req->url() === 'https://api.road.test/api/alpha/me/profile'
+            && $req->hasHeader('Authorization', 'Bearer test-access-token')
             && $req->hasHeader('X-Request-Id', 'req_test_1');
     });
 });
