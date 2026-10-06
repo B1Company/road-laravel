@@ -371,15 +371,18 @@ instead of the request user:
 Road::asService()->client()->businessUnits($buId)->members()->all();
 ```
 
-Configure credentials in `.env` — either a shared secret (`client_credentials`)
-or a signed assertion (`private_key_jwt`):
+Configure credentials in `.env`. The Dev Portal and the MCP issue a shared
+secret (`client_credentials`), the mode you can set up yourself:
 
 ```dotenv
 ROAD_SERVICE_MODE=client_credentials
 ROAD_SERVICE_CLIENT_ID=...
 ROAD_SERVICE_CLIENT_SECRET=...
-# or: ROAD_SERVICE_MODE=private_key_jwt with ROAD_SERVICE_KEY_ID + ROAD_SERVICE_PRIVATE_KEY
 ```
+
+The SDK also accepts a signed assertion (`ROAD_SERVICE_MODE=private_key_jwt`
+with `ROAD_SERVICE_KEY_ID` + `ROAD_SERVICE_PRIVATE_KEY`), but that key cannot be
+issued self-service. Ask the Road team for one.
 
 The SDK acquires a token from the Auth Server, caches it (until just before
 expiry, with a lock so concurrent workers don't stampede), and re-acquires
