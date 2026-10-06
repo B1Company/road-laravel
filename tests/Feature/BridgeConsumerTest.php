@@ -168,19 +168,22 @@ it('refuses up front, naming the variables, when no service credential is config
     Http::assertNothingSent();
 });
 
-it('names the missing person before the missing credential', function () {
+it('names the missing credential first when the person is missing too', function () {
     bridgeConsumerSetup(service: false);
     bridgeConsumerFake(['access_token' => 'brokered']);
     // Outside a `road`-protected route, and with no service credential either.
     app(RoadContext::class)->setToken(null);
 
+    // The credential is said first, as @b1-road/node-core does: it is the fix
+    // that does not depend on where the call is made.
     try {
         Road::client()->bridge()->exchangeForUser('plat_provider', 'read:Task', 'bu_1');
         test()->fail('expected a setup error');
     } catch (RoadBridgeSetupException $e) {
-        expect($e->errorCode())->toBe('person_required')
-            ->and($e->getMessage())->toContain('exchangeForUser()');
+        expect($e->errorCode())->toBe('service_credentials_missing');
     }
+    expect(fn () => Road::client()->bridge()->presenceAssertion('bu_1'))
+        ->toThrow(RoadBridgeSetupException::class, 'no person behind it');
     Http::assertNothingSent();
 });
 
