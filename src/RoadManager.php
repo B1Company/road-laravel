@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace B1Road\Laravel;
 
 use B1Road\Laravel\Auth\AuthServer\OidcDiscovery;
+use B1Road\Laravel\Auth\AuthServer\TokenStore;
 use B1Road\Laravel\Auth\RoadUser;
 use B1Road\Laravel\Auth\Service\ServiceCredentials;
 use B1Road\Laravel\Auth\Service\ServiceTokenStore;
@@ -50,9 +51,46 @@ final class RoadManager
         return $this->context->user();
     }
 
+    /**
+     * The Auth Server user id (the token's `sub`). Not the id Road speaks:
+     * Bridge, IAM subjects and webhook payloads use {@see roadUserId()}.
+     */
     public function userId(): ?string
     {
         return $this->context->user()?->id;
+    }
+
+    /**
+     * The signed-in person's **Road user id** (a UUID): the id Bridge
+     * (`onBehalfOfUser`, the person a provider route names), IAM subjects and
+     * webhook payloads (`userId`) carry. Not {@see userId()}, the Auth Server
+     * user id; sending one where the other is expected is refused
+     * (`cross_user`) or matches nobody.
+     *
+     * Read from Road (`/me/profile`) the first time a session asks, then kept
+     * with the session's tokens, so later requests make no call. Null when no
+     * one is signed in. When Road cannot be read it throws the client's
+     * exception rather than return the wrong id; the next call retries.
+     */
+    public function roadUserId(): ?string
+    {
+        if (! $this->context->isAuthenticated()) {
+            return null;
+        }
+
+        /** @var TokenStore $store */
+        $store = $this->container->make(TokenStore::class);
+        $tokens = $store->get();
+        if ($tokens?->roadUserId !== null) {
+            return $tokens->roadUserId;
+        }
+
+        $id = $this->client()->me()->get()->id;
+        if ($tokens !== null) {
+            $store->put($tokens->withRoadUserId($id));
+        }
+
+        return $id;
     }
 
     public function token(): ?string
