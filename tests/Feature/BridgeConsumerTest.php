@@ -122,6 +122,7 @@ it('surfaces each exchange refusal typed, carrying the code', function (string $
     ['TENANT_NOT_AUTHORIZED', 403],
     ['TOKEN_EXCHANGE_DENIED', 403],
     ['PLATFORM_NOT_FOUND', 404],
+    ['PLATFORM_NOT_ACTIVE', 409],
     ['PLATFORM_NOT_HOMOLOGATED', 409],
     ['PROVIDER_AUTHORIZATION_NOT_ATTESTED', 409],
     ['RATE_LIMITED', 429],
