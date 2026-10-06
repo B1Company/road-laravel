@@ -291,6 +291,7 @@ Every error thrown by the SDK is a `RoadException` subclass:
 | `RoadServerException` | 5xx | `server_error` | Retried with backoff (transient) |
 | `RoadNetworkException` | 502 | `network_error` | Unreachable upstream — retried with backoff |
 | `RoadApiException` | varies | varies | Catch-all for non-mapped statuses |
+| `RoadExtensionSessionException` | 401 | `malformed`, `signature_mismatch`, `expired`, … | `ExtensionSessionVerifier` refused an embed session context (see [Platform Extensions](#platform-extensions-verifying-the-embed-session)) |
 
 All errors are parsed from the API's RFC 7807 Problem Details and carry a stable
 `code`, a `requestId`, and a `docs` URL. When the API names the specific refusal
@@ -489,6 +490,63 @@ answer, no access (`503`). Set `ROAD_PLATFORM_BRIDGE_MAX_STALENESS` to a number
 of seconds to keep serving cached answers up to that age during an outage
 (`BridgeContext::$servedStale` tells you when that happened). A refusal from
 Road is never overridden by the cache.
+
+## Platform Extensions: verifying the embed session
+
+An extension's front end runs in an iframe on the host's page. It asks the host
+for a **session context** (`useExtensionHost` from `@b1-road/react/extension`)
+and posts `signed` to your backend. Road signed it with the extension's
+`signing` secret, which the browser never sees, so your backend is the only
+place it can be checked. Until then, nothing in it is true.
+
+```php
+// routes/api.php: no CSRF here, the signed context is the credential.
+use B1Road\Laravel\Exceptions\RoadExtensionSessionException;
+use B1Road\Laravel\Extensions\ExtensionSessionVerifier;
+use Illuminate\Http\Request;
+
+Route::post('/embed-session', function (Request $request) {
+    // road_rotate_extension_secret (kind='signing') writes it to .env as
+    // ROAD_EXTENSION_SIGNING_SECRET_<EXTENSION ID>. Read it through config()
+    // if you cache your config.
+    $verifier = new ExtensionSessionVerifier((string) env('ROAD_EXTENSION_SIGNING_SECRET_EXT_ABC123'));
+
+    try {
+        $session = $verifier->verify($request->json()->all());
+    } catch (RoadExtensionSessionException $e) {
+        return response()->json(['code' => $e->errorCode()], 401);
+    }
+
+    // Start your own session here: $session->userId, $session->installId, …
+    return ['userId' => $session->userId];
+});
+```
+
+`verify()` checks the HMAC over `payload` in constant time, the format version
+(`v === 1`) and the 5-minute window, with 30 seconds of clock skew either side.
+It returns an `ExtensionSession`:
+
+| Property | What it is |
+| --- | --- |
+| `userId` | The person on the host page, as a **Road user id**. Not the Auth Server id. |
+| `installId` | The install (`exti_…`). Send it as `install` on `POST /extensions/token-exchange`. |
+| `extensionId` | Your extension (`ext_…`). |
+| `businessUnitId` | The business unit. Scope everything you store for this person by it. |
+| `issuedAt`, `expiresAt` | The context's window, as `DateTimeImmutable`. |
+
+`expectInstall:` refuses a context for another install, `maxAgeSeconds:`
+accepts only contexts younger than Road's 5 minutes, and `now:` pins the clock
+in tests. A refusal throws `RoadExtensionSessionException` (401), whose
+`errorCode()` is one of its constants: `malformed`, `signature_mismatch`,
+`unsupported_version`, `expired`, `not_yet_valid` or `install_mismatch`, the
+same codes as the Node SDKs. An empty secret throws `InvalidArgumentException`
+when the verifier is built, because that is a deploy mistake, not a bad
+request.
+
+A context lives 5 minutes: verify it once and start your own session from the
+result. `embedAssertion`, when the iframe sends one, is outside the signature;
+pass it on untouched as `embed_assertion` on the data-leg exchange, where Road
+checks it.
 
 ## Escape hatches
 
