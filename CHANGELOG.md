@@ -29,6 +29,10 @@ contract from `alpha` to `v1` (see
 - The fail mode itself is unchanged here (`max_staleness` 0, fail-closed). The
   Node SDK now has the same default and the same rules, so the two
   middlewares behave alike when Road is down.
+- The generated `BridgeAttemptDto` gains an optional `reason`, regenerated
+  from the contract hub after `POST /bridge/authorize/attempts` started
+  accepting the refusal reason (F4.7 in plan 68). `road.bridge` does not send
+  it yet.
 
 ## [0.1.0-alpha.5] — 2026-10-05
 
