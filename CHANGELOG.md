@@ -13,8 +13,8 @@ contract from `alpha` to `v1` (see
 
 The generated DTOs in `src/DTO/Generated/` were regenerated from a contract
 hub that had not been re-emitted since 2026-08-21 (plan 68, N23). They now
-match the API again, and CI re-emits the hub on every API change, so it
-should not fall behind again.
+match the API again, and CI now fails any API change that leaves the
+committed hub behind, so it should not drift again.
 
 ### Changed
 
