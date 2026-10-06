@@ -147,7 +147,12 @@ final class RoadServiceProvider extends ServiceProvider
         $this->app->scoped(HttpTransportInterface::class, fn (Application $app) => $app->make(HttpTransport::class));
 
         $this->app->scoped(RoadClient::class, function (Application $app): RoadClient {
-            return new RoadClient($app->make(HttpTransportInterface::class));
+            return new RoadClient(
+                $app->make(HttpTransportInterface::class),
+                $app->make(RoadContext::class),
+                fn (): ?HttpTransport => $app->make(RoadManager::class)->serviceTransport(),
+                (string) $app->make(ConfigRepository::class)->get('road.platform_id', ''),
+            );
         });
 
         // Test harness — the manager resolves this when Road::fake() is called.

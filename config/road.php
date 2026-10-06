@@ -26,6 +26,14 @@ return [
 
     'environment' => env('ROAD_ENVIRONMENT', env('ROAD_ENV', 'sandbox')),
 
+    /*
+    | The platform this app is (`plat_…`), the same ROAD_PLATFORM_ID the Node
+    | SDKs read. A Bridge presence assertion is bound to it, so
+    | `bridge()->presenceAssertion()` and `exchangeForUser()` need it.
+    */
+
+    'platform_id' => env('ROAD_PLATFORM_ID'),
+
     'api' => [
         /*
         | Defaults to the hosted URL for 'environment'. Set it explicitly to
