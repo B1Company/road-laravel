@@ -64,8 +64,8 @@ final class GateBridge
             // `$user` (pure-BFF app with no Laravel auth guard) is fine — there's
             // no competing identity, so answer via context.
             if ($user instanceof Authenticatable) {
-                $roadUserId = $context->user()?->id;
-                if ($roadUserId !== null && (string) $user->getAuthIdentifier() !== $roadUserId) {
+                $authServerSub = $context->user()?->id;
+                if ($authServerSub !== null && (string) $user->getAuthIdentifier() !== $authServerSub) {
                     return null;
                 }
             }
