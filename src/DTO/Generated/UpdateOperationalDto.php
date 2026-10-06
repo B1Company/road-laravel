@@ -18,6 +18,9 @@ final class UpdateOperationalDto extends Data
         public ?string $runbookUrl = null,
         public ?string $appUrl = null,
         public ?string $teamOwner = null,
+        public ?string $releaseVersion = null,
+        public ?string $description = null,
+        public ?bool $showcaseOptIn = null,
         public ?string $zitadelClientId = null,
         public ?float $version = null,
     ) {

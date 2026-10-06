@@ -18,6 +18,8 @@ final class TokenExchangeRequestDto extends Data
         public string $subject_token_type,
         public string $audience,
         public string $scope,
+        public string $business_unit,
+        public string $presence_assertion,
     ) {
     }
 }

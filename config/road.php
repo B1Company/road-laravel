@@ -180,7 +180,11 @@ return [
     | max_staleness — the fail mode. Seconds a cached answer may still be served
     |   while Road is unreachable. 0 (default) fails closed: no fresh answer,
     |   no access (503). Raise it to ride out a Road outage on answers at most
-    |   this old. A refusal from Road is never overridden by the cache.
+    |   this old (300 at most is a sane ceiling). A refusal from Road is never
+    |   overridden by the cache, and drops that token's cached answer.
+    | authorize_timeout — seconds per attempt at Road's authorize endpoint.
+    |   The middleware retries once at most, so an outage answers 503 in about
+    |   twice this, instead of after the general `api.timeout` and retries.
     | strict_tenancy / strict_acting_user — refuse a token that names a tenant
     |   (or an end-user) on a route that gives no way to check it.
     | cache_store — a store every worker shares (redis, database, file). The
@@ -192,6 +196,7 @@ return [
         'read_ttl' => (int) env('ROAD_PLATFORM_BRIDGE_READ_TTL', 60),
         'write_ttl' => (int) env('ROAD_PLATFORM_BRIDGE_WRITE_TTL', 5),
         'max_staleness' => (int) env('ROAD_PLATFORM_BRIDGE_MAX_STALENESS', 0),
+        'authorize_timeout' => (float) env('ROAD_PLATFORM_BRIDGE_AUTHORIZE_TIMEOUT', 2),
         'strict_tenancy' => true,
         'strict_acting_user' => true,
         'report_attempts' => (bool) env('ROAD_PLATFORM_BRIDGE_REPORT_ATTEMPTS', true),
