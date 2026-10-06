@@ -28,7 +28,8 @@ use Illuminate\Support\Str;
  *   middleware does the same since B1-728 (it used to honour an expired token
  *   for up to a minute, B1-472).
  *
- * A grant revocation flushes every entry at once ({@see flush()}). The
+ * A refusal from Road drops that token's entry ({@see forget()}), and a grant
+ * revocation flushes every entry at once ({@see flush()}). The
  * `bridge.grant.revoked` payload names the consumer platform, not the tokens
  * minted under it, so there is no narrower set to evict. Revocations are rare
  * and a flush only costs one Road call per token on its next request.
@@ -36,6 +37,14 @@ use Illuminate\Support\Str;
 final class BridgeContextCache
 {
     private const PREFIX = 'road:bridge:';
+
+    /**
+     * How long a refusal blocks new entries for its token. It only has to
+     * outlast an ask already in flight when the refusal landed, and the
+     * middleware bounds an ask to two attempts of `authorize_timeout` (2 s by
+     * default), so a minute is ample.
+     */
+    private const REFUSAL_SECONDS = 60;
 
     public function __construct(
         private readonly CacheFactory $cache,
@@ -114,11 +123,21 @@ final class BridgeContextCache
 
         // Still keyed on the captured generation: if a flush lands between the
         // check above and this write, the entry is orphaned rather than served.
-        $this->store()->put($this->contextKey($key, $generation), [
+        $entryKey = $this->contextKey($key, $generation);
+        $this->store()->put($entryKey, [
             'context' => $context->toWire(),
             'fetchedAt' => $now,
             'usableUntil' => $usableUntil,
         ], $keep);
+
+        // Another worker may have had this token refused while this answer was
+        // in flight. Its forget() can run before the write above, which would
+        // then restore an allow Road has already refused. forget() marks the
+        // refusal before it deletes, and this reads the mark after writing, so
+        // whichever runs second sees the other.
+        if ($this->store()->has($this->refusedKey($key, $generation))) {
+            $this->store()->forget($entryKey);
+        }
     }
 
     /**
@@ -139,6 +158,21 @@ final class BridgeContextCache
     public function isDegraded(string $key, string $generation): bool
     {
         return $this->store()->get(self::PREFIX.'degraded:'.$generation.':'.$key) === true;
+    }
+
+    /**
+     * Drop the cached context for one token. Called when Road refuses it: kept,
+     * a warm allow would outlive that refusal and be served stale during a later
+     * outage (when `max_staleness` is raised).
+     *
+     * The refusal is marked first, so an allow another worker was still
+     * fetching cannot put the entry back ({@see put()}). For a minute after a
+     * refusal, that token is asked about on every request instead of cached.
+     */
+    public function forget(string $key, string $generation): void
+    {
+        $this->store()->put($this->refusedKey($key, $generation), true, self::REFUSAL_SECONDS);
+        $this->store()->forget($this->contextKey($key, $generation));
     }
 
     /** Drop every cached context. Wired to `bridge.grant.revoked` and `extension.install.uninstalled`. */
@@ -185,6 +219,11 @@ final class BridgeContextCache
     private function contextKey(string $key, string $generation): string
     {
         return self::PREFIX.'ctx:'.$generation.':'.$key;
+    }
+
+    private function refusedKey(string $key, string $generation): string
+    {
+        return self::PREFIX.'refused:'.$generation.':'.$key;
     }
 
     private function seconds(string $option, int $default): int
