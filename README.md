@@ -490,8 +490,13 @@ seconds on anything else. An answer is never reused past the token's own
 expiry. When Road cannot be reached, the default is to fail closed: no fresh
 answer, no access (`503`). Set `ROAD_PLATFORM_BRIDGE_MAX_STALENESS` to a number
 of seconds to keep serving cached answers up to that age during an outage
-(`BridgeContext::$servedStale` tells you when that happened). A refusal from
-Road is never overridden by the cache.
+(`BridgeContext::$servedStale` tells you when that happened); 300 is a sane
+ceiling. A refusal from Road is never overridden by the cache, and it drops
+that token's cached answer, so a later outage cannot bring it back. Road gets 2
+seconds per attempt and one retry (`ROAD_PLATFORM_BRIDGE_AUTHORIZE_TIMEOUT`
+sets the seconds), so during an outage the `503` comes in about 4 seconds, not
+after the client's general timeout and retries. The Node middleware follows
+the same rules with the same defaults.
 
 ## Escape hatches
 
@@ -557,7 +562,7 @@ The full config shape is published to `config/road.php`:
 | `road.debug.header_enabled` | Surface `DecisionTrace` on errors when `X-Road-Debug: 1` |
 | `road.service.*` | Service-to-service credentials for `Road::asService()` |
 | `road.webhooks.*` | Webhook receiver: `enabled`, `path`, `secret`, `tolerance`, `verify` |
-| `road.platform_bridge.*` | `road.bridge` middleware: `cache_store`, `read_ttl` (60), `write_ttl` (5), `max_staleness` (0, fail-closed), `strict_tenancy`, `strict_acting_user`, `report_attempts` |
+| `road.platform_bridge.*` | `road.bridge` middleware: `cache_store`, `read_ttl` (60), `write_ttl` (5), `max_staleness` (0, fail-closed), `authorize_timeout` (2), `strict_tenancy`, `strict_acting_user`, `report_attempts` |
 
 ## Naming note
 

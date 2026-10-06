@@ -15,6 +15,7 @@ final class CreatePlatformDto extends Data
     public function __construct(
         public string $name,
         public string $slug,
+        public ?string $description = null,
         public ?string $healthEndpoint = null,
         public ?string $runbookUrl = null,
         public ?string $teamOwner = null,

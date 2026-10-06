@@ -7,6 +7,7 @@ namespace B1Road\Laravel\Http\Middleware;
 use B1Road\Laravel\Bridge\BridgeAccessDenied;
 use B1Road\Laravel\Bridge\BridgeContext;
 use B1Road\Laravel\Bridge\BridgeContextCache;
+use B1Road\Laravel\Client\HttpTransport;
 use B1Road\Laravel\Client\Resources\Bridge;
 use B1Road\Laravel\Exceptions\RoadAuthnException;
 use B1Road\Laravel\Exceptions\RoadException;
@@ -62,9 +63,14 @@ use Throwable;
  * **Fail mode.** When Road cannot be reached, the request is refused with 503
  * unless a cached context is younger than `road.platform_bridge.max_staleness`
  * seconds. That defaults to 0: fail-closed. Raising it trades a bounded window
- * of stale answers for surviving a Road outage (the Node SDK defaults to 300).
- * A refusal from Road (any 4xx but 408/429) is never an outage: it denies at
- * once and is never answered from cache.
+ * of stale answers for surviving a Road outage. The Node SDK's
+ * `cache.maxStalenessMs` is the same setting, with the same default. A refusal
+ * from Road (any 4xx but 408/429) is never an outage: it denies at once, is
+ * never answered from cache, and drops the token's cached entry.
+ *
+ * Road gets `road.platform_bridge.authorize_timeout` seconds per attempt (2 by
+ * default) and one retry at most, so an outage answers 503 in about twice that
+ * instead of after the general client's 10 s per attempt, three attempts.
  */
 final class EnforceBridgeGrant
 {
@@ -76,6 +82,9 @@ final class EnforceBridgeGrant
 
     /** Verbs treated as read-only for TTL purposes. Mirrors the Node SDK. */
     private const READ_ACTIONS = ['read', 'list', 'view', 'get'];
+
+    /** One retry at most: a blip gets a second chance, an outage does not get three. */
+    private const AUTHORIZE_ATTEMPTS = 2;
 
     /** @var (Closure(Request): (string|null))|null */
     private static ?Closure $tenantResolver = null;
@@ -165,6 +174,15 @@ final class EnforceBridgeGrant
                 throw $e;
             } catch (Throwable $e) {
                 $status = self::statusOf($e);
+                $isDecision = $status !== null && $status >= 400 && $status < 500 && $status !== 408 && $status !== 429;
+
+                if ($isDecision) {
+                    // Road has said something definite about this token, so its cached
+                    // answer is void. Kept, a warm allow would be served over Road's
+                    // refusal during a later outage. A 422 counts too: the record that
+                    // answer came from is gone.
+                    $this->cache->forget($key, $generation);
+                }
 
                 if ($status === 422 && $permission !== null) {
                     // Road lost the mint record and will not enumerate the token, but it
@@ -179,7 +197,7 @@ final class EnforceBridgeGrant
                         // hazard the refusal/outage split exists to prevent.
                         return $this->deny(403, 'not_authorized', 'Road refused to authorize this token.', $permission, $key);
                     }
-                } elseif ($status !== null && $status >= 400 && $status < 500 && $status !== 408 && $status !== 429) {
+                } elseif ($isDecision) {
                     // A refusal is a decision, not an outage: retrying cannot change it,
                     // and a warm cached allow must not override it.
                     return $this->deny(403, 'not_authorized', 'Road refused to authorize this token.', $permission, $key);
@@ -360,7 +378,7 @@ final class EnforceBridgeGrant
         }
 
         try {
-            return $this->bridge = $this->road->asService()->client()->bridge();
+            $client = $this->road->asService()->client();
         } catch (RoadAuthnException $e) {
             // A configuration error, not the consumer's fault: surface it as a 500
             // rather than a 401 that would send them chasing their own token.
@@ -370,6 +388,27 @@ final class EnforceBridgeGrant
                 previous: $e,
             );
         }
+
+        // Bounded on the request path: one retry at most, and a short timeout
+        // per attempt. A transport other than ours (a test double) is used as is.
+        $transport = $client->transport();
+
+        return $this->bridge = $transport instanceof HttpTransport
+            ? new Bridge($transport->withLimits($this->authorizeTimeout(), self::AUTHORIZE_ATTEMPTS))
+            : $client->bridge();
+    }
+
+    /** Seconds per attempt at `/bridge/authorize`. Zero would mean "no timeout" to the HTTP client. */
+    private function authorizeTimeout(): float
+    {
+        $timeout = (float) $this->config->get('road.platform_bridge.authorize_timeout', 2);
+        if ($timeout <= 0) {
+            throw new LogicException(
+                "road.platform_bridge.authorize_timeout must be a positive number of seconds, got {$timeout}.",
+            );
+        }
+
+        return $timeout;
     }
 
     /** @return (Closure(Request): (string|null))|null */
