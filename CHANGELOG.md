@@ -385,9 +385,8 @@ contract from `alpha` to `v1` (see
 - **Tooling**: `road:install`, `road:doctor`, `road:whoami`, and
   `road:generate-dtos` (OpenAPI-contract codegen with a `--check` drift gate).
 
-[Unreleased]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.4...HEAD
-[0.1.0-alpha.4]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.3...road-laravel-v0.1.0-alpha.4
-[0.1.0-alpha.3]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.2...road-laravel-v0.1.0-alpha.3
-[0.1.0-alpha.2]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha.1...road-laravel-v0.1.0-alpha.2
-[0.1.0-alpha.1]: https://github.com/B1Company/road/compare/road-laravel-v0.1.0-alpha...road-laravel-v0.1.0-alpha.1
-[0.1.0-alpha]: https://github.com/B1Company/road/releases/tag/road-laravel-v0.1.0-alpha
+[0.1.0-alpha.5]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.4...v0.1.0-alpha.5
+[0.1.0-alpha.4]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.3...v0.1.0-alpha.4
+[0.1.0-alpha.3]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
+[0.1.0-alpha.2]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
+[0.1.0-alpha.1]: https://github.com/B1Company/road-laravel/releases/tag/v0.1.0-alpha.1
