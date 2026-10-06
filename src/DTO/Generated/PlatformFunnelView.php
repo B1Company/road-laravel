@@ -10,12 +10,13 @@ namespace B1Road\Laravel\DTO\Generated;
 
 use Spatie\LaravelData\Data;
 
-final class CreateDeveloperPlatformDto extends Data
+final class PlatformFunnelView extends Data
 {
     public function __construct(
-        public string $name,
-        public string $slug,
-        public ?string $description = null,
+        public array $steps,
+        public ?string $currentMilestone,
+        public ?string $currentReachedAt,
+        public ?float $timeToFirstAllowedCheckSeconds,
     ) {
     }
 }
