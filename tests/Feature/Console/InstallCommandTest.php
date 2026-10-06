@@ -189,3 +189,21 @@ it('still stubs the environment when .env names neither key', function () {
 
     expect(File::get(base_path('.env')))->toContain('ROAD_ENVIRONMENT=sandbox');
 });
+
+it('copies the Inertia provider into the app, byte for byte', function () {
+    // This copy is how a Laravel + Inertia app gets `RoadInertiaProvider`: there
+    // is no npm package for it (`@b1-road/laravel-react` was retired unpublished),
+    // so a broken publish leaves the README's import pointing at nothing.
+    $published = resource_path('js/lib/road-inertia-provider.tsx');
+    File::delete($published); // earlier road:install runs leave one behind
+    File::put(base_path('.env'), "APP_NAME=Test\n");
+
+    $this->artisan('road:install', ['--no-interaction' => true])
+        ->assertExitCode(0);
+
+    expect(file_exists($published))->toBeTrue();
+    expect(hash_file('sha256', $published))
+        ->toBe(hash_file('sha256', __DIR__.'/../../../resources/js/road-inertia-provider.tsx'));
+
+    File::delete($published);
+});
