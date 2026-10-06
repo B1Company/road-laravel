@@ -39,7 +39,7 @@ final class Bridge
      */
     public function authorize(string $brokeredToken, ?array $permissions = null): BridgeContext
     {
-        $body = self::withoutNulls((new BridgeAuthorizeDto($brokeredToken, $permissions))->toArray());
+        $body = self::withoutNulls((new BridgeAuthorizeDto(brokeredToken: $brokeredToken, permissions: $permissions))->toArray());
 
         return BridgeContext::fromWire($this->unwrap($this->http->request('POST', '/bridge/authorize', $body)));
     }
@@ -55,7 +55,16 @@ final class Bridge
         ?string $method = null,
         ?string $path = null,
     ): void {
-        $dto = new BridgeAttemptDto($brokeredToken, $permission, $allowed, $method, $path);
+        // Named, never positional: the generated DTO's constructor follows the
+        // contract hub's field order, and a new optional field (`reason`) once
+        // landed before `method`, shifting every positional argument after it.
+        $dto = new BridgeAttemptDto(
+            brokeredToken: $brokeredToken,
+            permission: $permission,
+            allowed: $allowed,
+            method: $method,
+            path: $path,
+        );
         $this->http->request('POST', '/bridge/authorize/attempts', self::withoutNulls($dto->toArray()));
     }
 
