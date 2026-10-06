@@ -8,6 +8,9 @@ final readonly class TokenSet
 {
     /**
      * @param  array<string,mixed>  $userPayload  Verified ID-token claims.
+     * @param  string|null  $roadUserId  The person's Road user id (a UUID), kept
+     *                                   once `Road::roadUserId()` has read it. Not
+     *                                   `userPayload['sub']`, the Auth Server id.
      */
     public function __construct(
         public string $accessToken,
@@ -15,11 +18,24 @@ final readonly class TokenSet
         public ?string $idToken,
         public int $expiresAt,
         public array $userPayload,
+        public ?string $roadUserId = null,
     ) {}
 
     public function isExpired(int $now = 0): bool
     {
         return $this->expiresAt <= ($now ?: time());
+    }
+
+    public function withRoadUserId(string $roadUserId): self
+    {
+        return new self(
+            accessToken: $this->accessToken,
+            refreshToken: $this->refreshToken,
+            idToken: $this->idToken,
+            expiresAt: $this->expiresAt,
+            userPayload: $this->userPayload,
+            roadUserId: $roadUserId,
+        );
     }
 
     /** @return array<string,mixed> */
@@ -31,6 +47,7 @@ final readonly class TokenSet
             'idToken' => $this->idToken,
             'expiresAt' => $this->expiresAt,
             'userPayload' => $this->userPayload,
+            'roadUserId' => $this->roadUserId,
         ];
     }
 
@@ -43,6 +60,7 @@ final readonly class TokenSet
             idToken: isset($data['idToken']) ? (string) $data['idToken'] : null,
             expiresAt: (int) $data['expiresAt'],
             userPayload: (array) ($data['userPayload'] ?? []),
+            roadUserId: isset($data['roadUserId']) ? (string) $data['roadUserId'] : null,
         );
     }
 }

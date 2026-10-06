@@ -10,6 +10,7 @@
 /tests               export-ignore
 /docs                export-ignore
 /CHANGELOG.md        export-ignore
+/changelog.d         export-ignore
 
 # Normalize line endings for shipped source.
 *.php   text eol=lf

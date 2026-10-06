@@ -38,7 +38,7 @@ it('lets a road-protected route resolve Road::user() and Road::client()->me() vi
 
     $this->getJson('/my-bus')->assertOk()->assertJsonPath('count', 1);
 
-    $fake->assertCalled('GET', '/iam/identity/me');
+    $fake->assertCalled('GET', '/me/profile');
     $fake->assertCalled('GET', '/me/business-units');
 });
 
