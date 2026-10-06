@@ -6,7 +6,13 @@ namespace B1Road\Laravel\Console;
 
 use B1Road\Laravel\Auth\AuthServer\OidcDiscovery;
 use B1Road\Laravel\Auth\JwksCache;
+use B1Road\Laravel\Auth\Service\ServiceCredentials;
+use B1Road\Laravel\Auth\Service\ServiceTokenStore;
+use B1Road\Laravel\Environments;
+use B1Road\Laravel\Exceptions\RoadAuthnException;
 use B1Road\Laravel\Inertia\ShareRoadContext;
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -21,17 +27,27 @@ use Throwable;
  *
  * Catches the real things integrators get wrong in prod:
  *  - missing env vars
+ *  - the environment and the Road API base it resolves to
  *  - Road API + Auth Server reachability
  *  - JWKS load
  *  - clock skew vs Auth Server (the silent JWT-validation killer)
  *  - redirect_uri scheme/host visibility (root cause of most OIDC fails)
  *  - session driver suitable for the BFF token store
  *  - middleware aliases + proxy mount
+ *  - Bridge provider readiness, when a service credential is configured
  *
  * Each check prints ✓/✗/⚠ with a clear next step on failure.
  */
 final class DoctorCommand extends Command
 {
+    /**
+     * The brokered token the provider probe asks about. It is not a JWT, so the
+     * most Road can say about it is `INVALID_BROKERED_TOKEN`, and Road says that
+     * only after it has accepted the caller as a homologated provider. That
+     * order is the whole probe: no person, no mint, nothing real at stake.
+     */
+    private const PROBE_TOKEN = 'road-doctor-probe';
+
     /** @var string */
     protected $signature = 'road:doctor';
 
@@ -49,7 +65,7 @@ final class DoctorCommand extends Command
     ): int {
         $ok = true;
 
-        $ok &= $this->checkConfigKey($config, 'road.api.base_url', 'Road API base URL');
+        $ok &= $this->checkTarget($config);
         $ok &= $this->checkConfigKey($config, 'road.auth_server.issuer_url', 'Auth Server issuer URL');
         $ok &= $this->checkConfigKey($config, 'road.auth_server.client_id', 'Auth Server client ID');
         $ok &= $this->checkConfigKey($config, 'road.auth_server.client_secret', 'Auth Server client secret');
@@ -70,6 +86,7 @@ final class DoctorCommand extends Command
         $ok &= $this->checkAuthServerDiscovery($discovery, $cacheOk);
         $ok &= $this->checkClockSkew($config, $http);
         $ok &= $this->checkJwks($jwks, $cacheOk);
+        $ok &= $this->checkBridgeProvider($config, $http, $discovery, $cacheOk);
         $ok &= $this->checkMiddlewareAliases($router);
         $ok &= $this->checkProxyMounted($config, $router);
         $ok &= $this->checkInertiaSharedProps($config, $router);
@@ -97,6 +114,31 @@ final class DoctorCommand extends Command
         $this->line("  ✗ $label is empty — set it in .env");
 
         return false;
+    }
+
+    /**
+     * The environment and the Road API base every probe below talks to: the
+     * hosted URL for ROAD_ENV, unless ROAD_API_BASE_URL overrides it. Same
+     * finding, same words as `npx road doctor`.
+     */
+    private function checkTarget(ConfigRepository $config): bool
+    {
+        $environment = (string) $config->get('road.environment', 'sandbox');
+        $base = (string) $config->get('road.api.base_url', '');
+        $this->line("  ✓ Environment: $environment");
+        if ($base === '') {
+            $this->line('  ✗ Road API base URL is empty — set ROAD_API_BASE_URL, or ROAD_ENV to sandbox or production');
+
+            return false;
+        }
+
+        $hosted = Environments::apiUrl($environment);
+        $source = $hosted !== null && rtrim($base, '/') === $hosted
+            ? "the hosted URL for $environment"
+            : 'set by ROAD_API_BASE_URL';
+        $this->line("  ✓ Road API: $base — $source");
+
+        return true;
     }
 
     private function checkRedirectUri(ConfigRepository $config): bool
@@ -287,6 +329,138 @@ final class DoctorCommand extends Command
         }
 
         return false;
+    }
+
+    /**
+     * The provider probe (F7.2 in plan 68): get a service token the way
+     * `Road::asService()` does, then ask `POST /bridge/authorize` about a token
+     * that cannot be real. Road checks the caller before the token, so the
+     * refusal names the first thing that is wrong:
+     *
+     *   401 UNKNOWN_PROVIDER          the credential belongs to no platform
+     *   403 PROVIDER_NOT_HOMOLOGATED  the platform is not a Bridge provider yet
+     *   403 INVALID_BROKERED_TOKEN    everything up to the token holds: ready
+     *
+     * No mint: minting needs a signed-in person, and this needs nobody.
+     *
+     * Fails only on a real failure. A consumer-only app has no credential, or
+     * one that is not homologated as a provider, and neither is wrong.
+     */
+    private function checkBridgeProvider(
+        ConfigRepository $config,
+        HttpFactory $http,
+        OidcDiscovery $discovery,
+        bool $cacheOk,
+    ): bool {
+        $credentials = ServiceCredentials::fromConfig($config);
+        if ($credentials === null) {
+            $clientId = (string) $config->get('road.service.client_id', '');
+            $secret = (string) $config->get('road.service.client_secret', '');
+            if ($clientId === '' && $secret === '') {
+                $this->line('  ⊘ Bridge provider probe — skipped: no service credential');
+
+                return true;
+            }
+            $this->line('  ✗ Service credential incomplete — set both ROAD_SERVICE_CLIENT_ID and ROAD_SERVICE_CLIENT_SECRET (or the private_key_jwt config)');
+
+            return false;
+        }
+        if (! $cacheOk) {
+            $this->line('  ⊘ Bridge provider probe — skipped (cache store unavailable; see above)');
+
+            return true;
+        }
+        $base = (string) $config->get('road.api.base_url', '');
+        if ($base === '' || (string) $config->get('road.auth_server.issuer_url', '') === '') {
+            // What blocks it is already reported above, and owns the failure.
+            $this->line('  ⊘ Bridge provider probe — skipped: needs the Auth Server and the Road API');
+
+            return true;
+        }
+
+        // A throwaway cache: the probe has to prove the credential against the
+        // Auth Server now, not reuse a token a worker cached an hour ago.
+        $tokens = new ServiceTokenStore($discovery, $http, $config, new Repository(new ArrayStore), $credentials);
+        try {
+            $token = $tokens->getToken();
+        } catch (RoadAuthnException $e) {
+            $status = $e->payload()['status'] ?? null;
+            if ($status === 400 || $status === 401) {
+                $this->line("  ✗ Service credential rejected by the Auth Server — HTTP $status");
+                $this->line("     Check ROAD_SERVICE_CLIENT_ID and ROAD_SERVICE_CLIENT_SECRET: they must be this platform's service credential, issued in the environment above.");
+            } else {
+                $detail = is_int($status) && $status >= 300 ? "HTTP $status" : 'unexpected token response';
+                $this->line("  ✗ Service token request failed — $detail");
+                $this->line('     Check AUTH_SERVER_ISSUER_URL and that the Auth Server is reachable.');
+            }
+
+            return false;
+        } catch (Throwable) {
+            $this->line('  ✗ Service token request failed — Auth Server token endpoint unreachable');
+            $this->line('     Check AUTH_SERVER_ISSUER_URL and that the Auth Server is reachable.');
+
+            return false;
+        }
+
+        $version = trim((string) $config->get('road.api.version', 'alpha'), '/');
+        try {
+            $response = $http->timeout(5)->withToken($token)->acceptJson()
+                ->post(rtrim($base, '/').'/api/'.$version.'/bridge/authorize', ['brokeredToken' => self::PROBE_TOKEN]);
+        } catch (Throwable $e) {
+            $this->line('  ✗ Bridge provider probe failed — '.$e->getMessage());
+
+            return false;
+        }
+
+        return $this->reportProviderProbe($response->status(), $this->refusalCode($response->json()));
+    }
+
+    private function reportProviderProbe(int $status, ?string $code): bool
+    {
+        if ($status === 403 && $code === 'INVALID_BROKERED_TOKEN') {
+            $this->line('  ✓ Bridge provider ready — credential accepted, platform homologated');
+
+            return true;
+        }
+        if ($status === 403 && $code === 'PROVIDER_NOT_HOMOLOGATED') {
+            $this->line('  ⚠ Platform not homologated as a Bridge provider — PROVIDER_NOT_HOMOLOGATED');
+            $this->line("     Only matters if this app serves Bridge calls. The Road team homologates providers; road_guide('bridge') lists what to have ready.");
+
+            return true;
+        }
+        if ($status === 401 && $code === 'UNKNOWN_PROVIDER') {
+            $this->line('  ✗ Service credential belongs to no platform — UNKNOWN_PROVIDER');
+            $this->line('     Use the service credential issued for this platform (road_issue_service_credential), in the environment above.');
+
+            return false;
+        }
+        if ($status === 401) {
+            $this->line('  ✗ Road did not accept the service token — HTTP 401');
+            $this->line('     The credential and the Road API are probably in different environments. Check AUTH_SERVER_ISSUER_URL against the environment above.');
+
+            return false;
+        }
+        $this->line('  ✗ Bridge provider probe failed — HTTP '.$status.($code !== null ? " $code" : ''));
+
+        return false;
+    }
+
+    /**
+     * The refusal's `code`. Falls back to an UPPER_SNAKE `detail`, which is
+     * where an API from before refusals carried `code` put it.
+     */
+    private function refusalCode(mixed $body): ?string
+    {
+        if (! is_array($body)) {
+            return null;
+        }
+        foreach ([$body['code'] ?? null, $body['detail'] ?? null] as $value) {
+            if (is_string($value) && preg_match('/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/', $value) === 1) {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     private function checkMiddlewareAliases(Router $router): bool

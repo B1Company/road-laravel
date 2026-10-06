@@ -556,7 +556,7 @@ and returns `200` for unknown event types (forward-compatible).
 | Command | Purpose |
 |---|---|
 | `road:install` | Publish config + Inertia JS provider, append `.env` stubs |
-| `road:doctor` | Connectivity + config smoke check (env, reachability, JWKS, clock skew, redirect_uri shape, session driver, middleware, proxy mount) |
+| `road:doctor` | Connectivity + config smoke check (env, the environment and Road API base it resolved, reachability, JWKS, clock skew, redirect_uri shape, session driver, middleware, proxy mount). With a service credential set, it also asks Road whether the platform is ready as a Bridge provider: `UNKNOWN_PROVIDER` fails, `PROVIDER_NOT_HOMOLOGATED` warns (only matters if you serve Bridge calls); without one the probe is skipped |
 | `road:whoami` | Print the session-stored user's claims |
 | `road:generate-dtos` | Regenerate (or `--check`) the typed DTOs from the OpenAPI contract |
 

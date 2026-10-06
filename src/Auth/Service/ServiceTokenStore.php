@@ -94,6 +94,9 @@ final class ServiceTokenStore
             throw new RoadAuthnException(
                 message: sprintf('Service token acquisition failed (HTTP %d).', $response->status()),
                 errorCode: 'service_token_failed',
+                // So `road:doctor` can tell a rejected credential (400/401) from
+                // an Auth Server that is down, without parsing the message.
+                payload: ['status' => $response->status()],
             );
         }
 
