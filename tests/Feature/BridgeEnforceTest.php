@@ -587,6 +587,43 @@ it('gives Road two short attempts, then fails closed', function () {
     expect($timeouts)->toBe([2.0, 2.0]);
 });
 
+// A blip, then a 401 for the service token: re-acquiring it would be a third
+// request. Falsifiability: drop the ceiling check on the 401 refresh in
+// HttpTransport and Road is asked three times.
+it('counts the service-token refresh against the two attempts', function () {
+    Sleep::fake();
+    $calls = 0;
+    fakeRoad(function () use (&$calls) {
+        return match (++$calls) {
+            1 => throw new ConnectionException('Operation timed out'),
+            2 => Http::response(['type' => 'x', 'title' => 'UNKNOWN_PROVIDER', 'status' => 401], 401),
+            default => Http::response(['data' => bridgeCtx()]),
+        };
+    });
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()]);
+
+    expect($calls)->toBe(2);
+});
+
+// The ceiling bounds requests; it must not cost a rotated service token its
+// one refresh. With retries off, a 401 on the first attempt still re-asks once.
+it('still refreshes a rejected service token with retries disabled', function () {
+    $calls = 0;
+    fakeRoad(function () use (&$calls) {
+        return ++$calls === 1
+            ? Http::response(['type' => 'x', 'title' => 'UNKNOWN_PROVIDER', 'status' => 401], 401)
+            : Http::response(['data' => bridgeCtx()]);
+    });
+    config(['road.api.retry.enabled' => false]);
+    bridgeRoute('road.bridge:read:Charge');
+
+    $this->getJson('/charges', ['Authorization' => 'Bearer '.brokered()])->assertOk();
+
+    expect($calls)->toBe(2);
+});
+
 it('takes the per-attempt timeout from authorize_timeout', function () {
     Sleep::fake();
     $timeouts = [];

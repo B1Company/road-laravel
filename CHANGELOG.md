@@ -26,7 +26,8 @@ contract from `alpha` to `v1` (see
   so an outage answers `503` in about 4 s instead of after `api.timeout` (10 s)
   and three attempts. A value of 0 or less throws a `LogicException`, because
   the HTTP client reads 0 as no timeout at all. It never retries more than
-  `api.retry` allows. The bound comes from a new
+  `api.retry` allows, and re-acquiring a rejected service token counts as one
+  of the two attempts. The bound comes from a new
   `HttpTransport::withLimits()`.
 - The fail mode itself is unchanged here (`max_staleness` 0, fail-closed). The
   Node SDK now has the same default and the same rules, so the two

@@ -169,8 +169,12 @@ final class HttpTransport implements HttpTransportInterface
 
             // In service mode a 401 means the cached token was rejected
             // (rotated/expired server-side). Drop it and retry once with a
-            // freshly-acquired token. Independent of the transient-retry budget.
-            if ($serviceMode && $status === 401 && ! $authRetried && $this->serviceTokens !== null) {
+            // freshly-acquired token. Independent of the transient-retry budget,
+            // so it still happens with retries off, but never past a
+            // withLimits() ceiling: that bound is on requests, whatever the
+            // reason for the next one.
+            $underCeiling = $this->maxAttemptsCeiling === null || $attempt < $this->maxAttemptsCeiling;
+            if ($serviceMode && $status === 401 && ! $authRetried && $underCeiling && $this->serviceTokens !== null) {
                 $authRetried = true;
                 $this->serviceTokens->invalidate();
                 $token = $this->serviceTokens->getToken();
