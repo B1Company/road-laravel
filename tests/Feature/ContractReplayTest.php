@@ -85,6 +85,16 @@ it('decodes every recorded contract fixture through the matching DTO', function 
             expect($resolution->subscriptionId)->toBe($data['subscriptionId']);
             expect($resolution->scopeId)->toBe($data['scopeId']);
         })(),
+        'bridgeOwnerAuditList' => (function () use ($data) {
+            // A platform owner's Bridge audit row names the other platform and
+            // the decision, and nothing from the audit table behind it.
+            expect($data)->not->toBeEmpty();
+            foreach ($data as $row) {
+                expect(array_keys($row))->toEqualCanonicalizing(
+                    ['event', 'counterparty', 'permission', 'allowed', 'reason', 'createdAt'],
+                );
+            }
+        })(),
         'webhookDelivery' => (function () use ($fixture) {
             // A delivery envelope `{ id, event, timestamp, data }` — decode its
             // payload through the same DTO the receiver dispatches, so the
