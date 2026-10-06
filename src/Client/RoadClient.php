@@ -10,6 +10,8 @@ use B1Road\Laravel\Client\Resources\BusinessUnitScope;
 use B1Road\Laravel\Client\Resources\Iam;
 use B1Road\Laravel\Client\Resources\Invitations;
 use B1Road\Laravel\Client\Resources\Me;
+use B1Road\Laravel\Context\RoadContext;
+use Closure;
 
 /**
  * Root client for the Road API. Mirrors
@@ -28,7 +30,19 @@ class RoadClient
 
     private ?Bridge $bridge = null;
 
-    public function __construct(private readonly HttpTransportInterface $http) {}
+    /**
+     * `$context`, `$serviceTransport` and `$platformId` feed the Bridge
+     * consumer helpers only: who the client calls Road as, how to call it as
+     * the platform, and the `plat_…` an assertion is bound to.
+     *
+     * @param  (Closure(): ?HttpTransport)|null  $serviceTransport
+     */
+    public function __construct(
+        private readonly HttpTransportInterface $http,
+        private readonly ?RoadContext $context = null,
+        private readonly ?Closure $serviceTransport = null,
+        private readonly string $platformId = '',
+    ) {}
 
     public function me(): Me
     {
@@ -59,14 +73,15 @@ class RoadClient
     }
 
     /**
-     * Platform Bridge, provider side. Call it as your platform
+     * Platform Bridge. As a consumer, `Road::client()->bridge()->exchangeForUser()`
+     * inside a `road`-protected route. As a provider, call it as your platform
      * (`Road::asService()->client()->bridge()`), or let the `road.bridge`
      * middleware do it for you. `bridge()->audit()` is the owner's read and
      * goes through `Road::client()` instead.
      */
     public function bridge(): Bridge
     {
-        return $this->bridge ??= new Bridge($this->http);
+        return $this->bridge ??= new Bridge($this->http, $this->context, $this->serviceTransport, $this->platformId);
     }
 
     /**
