@@ -83,6 +83,10 @@ final class Bridge
      */
     public function exchangeForUser(string $audience, string|array $scope, string $businessUnitId, ?string $platformId = null): array
     {
+        // The checks that need nothing resolved come first, so a client with
+        // no person is told that, not about a credential it would also need.
+        $this->platformIdFor($platformId, 'exchangeForUser');
+        $this->requirePerson('exchangeForUser');
         $service = $this->serviceTransport !== null ? ($this->serviceTransport)() : null;
         if ($service === null) {
             throw new RoadBridgeSetupException(
@@ -90,7 +94,6 @@ final class Bridge
                 'service_credentials_missing',
             );
         }
-        $this->platformIdFor($platformId, 'exchangeForUser');
         $assertion = $this->presenceAssertion($businessUnitId, $platformId);
 
         $send = function (bool $fresh) use ($service, $audience, $scope, $businessUnitId, $assertion): array {

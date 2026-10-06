@@ -168,6 +168,22 @@ it('refuses up front, naming the variables, when no service credential is config
     Http::assertNothingSent();
 });
 
+it('names the missing person before the missing credential', function () {
+    bridgeConsumerSetup(service: false);
+    bridgeConsumerFake(['access_token' => 'brokered']);
+    // Outside a `road`-protected route, and with no service credential either.
+    app(RoadContext::class)->setToken(null);
+
+    try {
+        Road::client()->bridge()->exchangeForUser('plat_provider', 'read:Task', 'bu_1');
+        test()->fail('expected a setup error');
+    } catch (RoadBridgeSetupException $e) {
+        expect($e->errorCode())->toBe('person_required')
+            ->and($e->getMessage())->toContain('exchangeForUser()');
+    }
+    Http::assertNothingSent();
+});
+
 it('refuses up front when no platform id is configured', function () {
     bridgeConsumerSetup(platformId: null);
     bridgeConsumerFake(['access_token' => 'brokered']);
