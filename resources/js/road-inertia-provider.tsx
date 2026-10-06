@@ -20,9 +20,9 @@
  * `road` shared props (base URL, current BU, the auth callbacks) and of the
  * cookie auth mode, so those cannot be overridden.
  *
- * This file is the single source of truth for the bridge. The Laravel SDK ships
- * a byte-identical copy at `resources/js/road-inertia-provider.tsx` for
- * `vendor:publish` (a drift-guard test keeps the two in lockstep).
+ * Ships with `b1-road/laravel`: `php artisan road:install` copies it to
+ * `resources/js/lib/road-inertia-provider.tsx`. After upgrading the package,
+ * refresh your copy with `php artisan vendor:publish --tag=road-inertia --force`.
  */
 
 import {
@@ -115,7 +115,7 @@ export function RoadInertiaProvider({
 
   if (!road) {
     throw new Error(
-      "[@b1-road/laravel-react] The `road` shared prop is missing. Ensure the " +
+      "[b1-road/laravel] The `road` shared prop is missing. Ensure the " +
         "Road SDK's ShareRoadContext middleware is active (it auto-mounts when " +
         "inertiajs/inertia-laravel is installed; check `road.inertia.enabled` " +
         "is not false), then run `php artisan road:doctor` to verify wiring.",
@@ -171,7 +171,7 @@ export function RoadInertiaProvider({
         .then((res) => {
           if (!res.ok) {
             throw new Error(
-              `[@b1-road/laravel-react] business-unit select failed: ${res.status} ${res.statusText}`,
+              `[b1-road/laravel] business-unit select failed: ${res.status} ${res.statusText}`,
             );
           }
           // Re-hydrate `road.currentBusinessUnitId` only once the server accepted.
@@ -209,7 +209,7 @@ export function useRoadInertia(): RoadInertiaProps {
   const road = usePage<PageProps>().props.road;
   if (!road) {
     throw new Error(
-      "[@b1-road/laravel-react] The `road` shared prop is missing — is " +
+      "[b1-road/laravel] The `road` shared prop is missing — is " +
         "ShareRoadContext active? Run `php artisan road:doctor`.",
     );
   }

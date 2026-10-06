@@ -65,10 +65,31 @@ Route::middleware('road')->group(function () {
 session-stored Auth Server tokens. `Road::client()` exposes the typed
 Road API client.
 
+**One person, two ids.** `Road::userId()` is the Auth Server user id: the key
+for anything you store against your own login. `Road::roadUserId()` is the
+Road user id, the one Bridge (`onBehalfOfUser`, the person a provider route
+names), IAM subjects and webhook payloads (`userId`) carry. Sending one where
+the other is expected is refused or matches nobody. The SDK reads
+`roadUserId()` from Road the first time a session asks and keeps it with the
+session's tokens. If Road can't be reached, it throws the client's exception
+instead of handing you the wrong id.
+
 ### 2. Render Road widgets in Inertia
 
+`road:install` already copied the React provider into your app, at
+`resources/js/lib/road-inertia-provider.tsx`. It is a file you own, not an npm
+package (there is none for it). To copy it on its own, or to refresh it after
+upgrading this package:
+
 ```bash
-php artisan vendor:publish --tag=road-inertia
+php artisan vendor:publish --tag=road-inertia --force
+```
+
+The provider imports `@b1-road/react` and `@inertiajs/react`, so install them
+from npm:
+
+```bash
+npm install @b1-road/react @inertiajs/react
 ```
 
 Wrap your app:
@@ -373,15 +394,18 @@ instead of the request user:
 Road::asService()->client()->businessUnits($buId)->members()->all();
 ```
 
-Configure credentials in `.env` — either a shared secret (`client_credentials`)
-or a signed assertion (`private_key_jwt`):
+Configure credentials in `.env`. The Dev Portal and the MCP issue a shared
+secret (`client_credentials`), the mode you can set up yourself:
 
 ```dotenv
 ROAD_SERVICE_MODE=client_credentials
 ROAD_SERVICE_CLIENT_ID=...
 ROAD_SERVICE_CLIENT_SECRET=...
-# or: ROAD_SERVICE_MODE=private_key_jwt with ROAD_SERVICE_KEY_ID + ROAD_SERVICE_PRIVATE_KEY
 ```
+
+The SDK also accepts a signed assertion (`ROAD_SERVICE_MODE=private_key_jwt`
+with `ROAD_SERVICE_KEY_ID` + `ROAD_SERVICE_PRIVATE_KEY`), but that key cannot be
+issued self-service. Ask the Road team for one.
 
 The SDK acquires a token from the Auth Server, caches it (until just before
 expiry, with a lock so concurrent workers don't stampede), and re-acquires
@@ -536,6 +560,20 @@ sets the seconds), so during an outage the `503` comes in about 4 seconds, not
 after the client's general timeout and retries. The Node middleware follows
 the same rules with the same defaults.
 
+**Reading your platform's Bridge audit.** The platform's owner can list the
+Bridge traffic it took part in: `inbound` is other platforms reaching yours,
+`outbound` is yours reaching others. Each row is a `BridgeAuditEntry` naming
+the other platform, the event (`exchange`, `check`, `attempt`,
+`grant_created`, `grant_revoked`), the decision and a reason code. It needs the
+owner's user token, so call it through `Road::client()` on a request where the
+owner is signed in; the service credential gets 403.
+
+```php
+foreach (Road::client()->bridge()->audit('plat_…', 'inbound', allowed: false) as $row) {
+    logger()->info('bridge refusal', [$row->createdAt, $row->counterparty?->name, $row->reason]);
+}
+```
+
 ## Escape hatches
 
 When the typed surface doesn't cover something, drop a level — you never have to
@@ -576,7 +614,7 @@ and returns `200` for unknown event types (forward-compatible).
 | Command | Purpose |
 |---|---|
 | `road:install` | Publish config + Inertia JS provider, append `.env` stubs |
-| `road:doctor` | Connectivity + config smoke check (env, reachability, JWKS, clock skew, redirect_uri shape, session driver, middleware, proxy mount) |
+| `road:doctor` | Connectivity + config smoke check (env, the environment and Road API base it resolved, reachability, JWKS, clock skew, redirect_uri shape, session driver, middleware, proxy mount). With a service credential set, it also asks Road whether the platform is ready as a Bridge provider: `UNKNOWN_PROVIDER` fails, `PROVIDER_NOT_HOMOLOGATED` warns (only matters if you serve Bridge calls); without one the probe is skipped |
 | `road:whoami` | Print the session-stored user's claims |
 | `road:generate-dtos` | Regenerate (or `--check`) the typed DTOs from the OpenAPI contract |
 

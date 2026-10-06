@@ -15,6 +15,7 @@ use B1Road\Laravel\Exceptions\RoadBridgeSetupException;
 use B1Road\Laravel\Exceptions\RoadException;
 use B1Road\Laravel\Exceptions\RoadRateLimitException;
 use Closure;
+use InvalidArgumentException;
 
 /**
  * Platform Bridge, both sides. Mirrors `road.bridge` in `@b1-road/node-core`.
@@ -30,6 +31,10 @@ use Closure;
  * `road.bridge` middleware over calling it directly. It owns the caching,
  * invalidation, fail mode and tenant/acting-user checks you would otherwise
  * reimplement.
+ *
+ * `audit()` is the platform owner's read of its Bridge traffic, so it needs
+ * the owner's user token (`Road::client()` where the owner is signed in),
+ * never the service credential.
  */
 final class Bridge
 {
@@ -134,7 +139,7 @@ final class Bridge
      */
     public function authorize(string $brokeredToken, ?array $permissions = null): BridgeContext
     {
-        $body = self::withoutNulls((new BridgeAuthorizeDto($brokeredToken, $permissions))->toArray());
+        $body = self::withoutNulls((new BridgeAuthorizeDto(brokeredToken: $brokeredToken, permissions: $permissions))->toArray());
 
         return BridgeContext::fromWire($this->unwrap($this->http->request('POST', '/bridge/authorize', $body)));
     }
@@ -150,7 +155,13 @@ final class Bridge
         ?string $method = null,
         ?string $path = null,
     ): void {
-        $dto = new BridgeAttemptDto($brokeredToken, $permission, $allowed, $method, $path);
+        $dto = new BridgeAttemptDto(
+            brokeredToken: $brokeredToken,
+            permission: $permission,
+            allowed: $allowed,
+            method: $method,
+            path: $path,
+        );
         $this->http->request('POST', '/bridge/authorize/attempts', self::withoutNulls($dto->toArray()));
     }
 
@@ -204,6 +215,29 @@ final class Bridge
             payload: $payload,
             previous: $e,
         );
+    }
+
+    /**
+     * Your platform's Bridge audit: the token exchanges, checks, attempts and
+     * grant changes it took part in. `inbound` is other platforms reaching yours
+     * (you are the provider); `outbound` is yours reaching others (you are the
+     * consumer). Pass `$allowed: false` for refusals only.
+     *
+     *   foreach (Road::client()->bridge()->audit('plat_…', 'inbound') as $row) { ... }
+     *
+     * **Call it as the platform's owner** (`Road::client()` on a request where
+     * the owner is signed in). The service credential gets 403, and so does a
+     * platform you do not own.
+     */
+    public function audit(string $platformId, string $direction, ?bool $allowed = null): BridgeAuditCollection
+    {
+        if (! in_array($direction, ['inbound', 'outbound'], true)) {
+            throw new InvalidArgumentException(
+                "Unknown Bridge audit direction '{$direction}'. Use 'inbound' (others reaching your platform) or 'outbound' (yours reaching others).",
+            );
+        }
+
+        return new BridgeAuditCollection($this->http, $platformId, $direction, $allowed);
     }
 
     /**

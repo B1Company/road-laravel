@@ -45,7 +45,7 @@ it('exposes the underlying transport', function () {
 
 it('asUser($token) attaches the given token as the Bearer', function () {
     Http::fake([
-        'api.road.test/api/alpha/iam/identity/me' => Http::response([
+        'api.road.test/api/alpha/me/profile' => Http::response([
             'data' => ['id' => 'u_9', 'name' => 'Nine', 'email' => 'n@n.com'],
         ], 200),
     ]);

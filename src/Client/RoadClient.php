@@ -76,7 +76,8 @@ class RoadClient
      * Platform Bridge. As a consumer, `Road::client()->bridge()->exchangeForUser()`
      * inside a `road`-protected route. As a provider, call it as your platform
      * (`Road::asService()->client()->bridge()`), or let the `road.bridge`
-     * middleware do it for you.
+     * middleware do it for you. `bridge()->audit()` is the owner's read and
+     * goes through `Road::client()` instead.
      */
     public function bridge(): Bridge
     {
