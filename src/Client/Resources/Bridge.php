@@ -155,6 +155,9 @@ final class Bridge
         ?string $method = null,
         ?string $path = null,
     ): void {
+        // Named, never positional: the generated DTO's constructor follows the
+        // contract hub's field order, and a new optional field (`reason`) once
+        // landed before `method`, shifting every positional argument after it.
         $dto = new BridgeAttemptDto(
             brokeredToken: $brokeredToken,
             permission: $permission,

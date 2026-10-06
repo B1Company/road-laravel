@@ -16,6 +16,7 @@ final class BridgeAttemptDto extends Data
         public string $brokeredToken,
         public string $permission,
         public bool $allowed,
+        public ?string $reason = null,
         public ?string $method = null,
         public ?string $path = null,
     ) {
