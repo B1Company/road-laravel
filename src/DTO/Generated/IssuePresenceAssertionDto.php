@@ -10,12 +10,11 @@ namespace B1Road\Laravel\DTO\Generated;
 
 use Spatie\LaravelData\Data;
 
-final class CreateDeveloperPlatformDto extends Data
+final class IssuePresenceAssertionDto extends Data
 {
     public function __construct(
-        public string $name,
-        public string $slug,
-        public ?string $description = null,
+        public string $businessUnitId,
+        public string $consumerPlatformPublicId,
     ) {
     }
 }
