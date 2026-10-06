@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use B1Road\Laravel\Client\Resources\RoleWire;
+use B1Road\Laravel\DTO\BridgeAuditEntry;
 use B1Road\Laravel\DTO\BusinessUnitDetail;
 use B1Road\Laravel\DTO\MyBusinessUnits;
 use B1Road\Laravel\DTO\Pagination;
@@ -93,6 +94,10 @@ it('decodes every recorded contract fixture through the matching DTO', function 
                 expect(array_keys($row))->toEqualCanonicalizing(
                     ['event', 'counterparty', 'permission', 'allowed', 'reason', 'createdAt'],
                 );
+                $entry = BridgeAuditEntry::from($row);
+                expect($entry->event)->toBe($row['event']);
+                expect($entry->permission)->toBe($row['permission']);
+                expect($entry->counterparty?->name)->toBe($row['counterparty']['name'] ?? null);
             }
         })(),
         'webhookDelivery' => (function () use ($fixture) {

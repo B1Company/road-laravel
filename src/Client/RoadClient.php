@@ -61,7 +61,8 @@ class RoadClient
     /**
      * Platform Bridge, provider side. Call it as your platform
      * (`Road::asService()->client()->bridge()`), or let the `road.bridge`
-     * middleware do it for you.
+     * middleware do it for you. `bridge()->audit()` is the owner's read and
+     * goes through `Road::client()` instead.
      */
     public function bridge(): Bridge
     {
