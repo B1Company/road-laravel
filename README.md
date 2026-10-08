@@ -165,7 +165,7 @@ Road::client()->businessUnits($buId)->invitations()->create([
     'roleId' => $roleId,
     'platformRoleIds' => [$platformRoleId], // optional — grant platform-subscription roles on acceptance
 ]);
-Road::client()->invitations()->accept($invitationId);
+Road::client()->invitations()->accept($invitationId, $token); // $token: from the invitation link
 
 // A membership carries the platforms its BU subscribes to
 foreach (Road::client()->me()->memberships() as $m) { // ...or ->businessUnits()->memberships

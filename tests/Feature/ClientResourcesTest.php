@@ -208,7 +208,7 @@ it('accepts and rejects invitations by id at the top level', function () {
     ]);
 
     $client = seedRoadClient();
-    expect($client->invitations()->accept('inv_1')->status)->toBe('accepted');
+    expect($client->invitations()->accept('inv_1', 'link-token')->status)->toBe('accepted');
     expect($client->invitations()->reject('inv_2')->status)->toBe('rejected');
 });
 

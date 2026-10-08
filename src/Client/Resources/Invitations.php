@@ -8,7 +8,7 @@ use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\DTO\Invitation;
 
 /**
- * `Road::client()->invitations()->accept($id)` — the per-invitation ops that
+ * `Road::client()->invitations()->accept($id, $token)` — the per-invitation ops that
  * don't need the owning BU in hand (the API resolves it server-side). Listing
  * and create live on the BU-scoped {@see InvitationCollection}.
  *
@@ -23,9 +23,14 @@ final class Invitations
 
     public function __construct(private readonly HttpTransportInterface $http) {}
 
-    public function accept(string $invitationId): Invitation
+    /**
+     * Accept with the single-use token from the invitation link (the `?token=`
+     * the invitation email opens with). The token is the proof of the
+     * invitation; the signed-in email is not compared.
+     */
+    public function accept(string $invitationId, string $token): Invitation
     {
-        $body = $this->http->request('POST', '/organization/invitations/'.rawurlencode($invitationId).'/accept');
+        $body = $this->http->request('POST', '/organization/invitations/'.rawurlencode($invitationId).'/accept', ['token' => $token]);
 
         return Invitation::from($this->unwrap($body));
     }

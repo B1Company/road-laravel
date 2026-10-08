@@ -57,7 +57,7 @@ it('drives the whole client surface through the in-memory fake', function () {
     expect($scope->invitations()->all())->toHaveCount(1);
     expect($scope->invitations()->create(['email' => 'x@b1.app', 'roleId' => 'r_1']))->toBeInstanceOf(Invitation::class);
     expect($scope->invitations()->cancel('inv_bu_1_0')->status)->toBe('cancelled');
-    expect($client->invitations()->accept('inv_bu_1_0')->status)->toBe('accepted');
+    expect($client->invitations()->accept('inv_bu_1_0', 'link-token')->status)->toBe('accepted');
     expect($client->invitations()->reject('inv_bu_1_0')->status)->toBe('rejected');
 
     // IAM scopes + assignments + effective permissions
