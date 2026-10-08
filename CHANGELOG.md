@@ -49,12 +49,93 @@ committed hub behind, so it should not drift again.
   Node SDK now has the same default and the same rules, so the two
   middlewares behave alike when Road is down.
 
+- **The Inertia provider lives here alone.** `RoadInertiaProvider`
+  (`resources/js/road-inertia-provider.tsx`, copied into your app by
+  `road:install`) mirrored the npm package `@b1-road/laravel-react`, which was
+  retired without ever being published. Its errors now start with
+  `[b1-road/laravel]` instead of naming that package. To pick up the new copy,
+  run `php artisan vendor:publish --tag=road-inertia --force`.
+
+- The generated `BridgeAttemptDto` gains an optional `reason`, regenerated
+  from the contract hub after `POST /bridge/authorize/attempts` started
+  accepting the refusal reason (F4.7 in plan 68). `road.bridge` does not send
+  it yet.
+
+### Fixed
+
+- **Packagist links that worked only inside B1** (N16, plan 68).
+  `support.issues` and `support.source` pointed at Road's private monorepo, a
+  404 for everyone else. `support.source` is now the public mirror,
+  `B1Company/road-laravel`, and `support.email` (`contato@b1.app`) replaces
+  `support.issues`.
+
+- **`Road::client()->me()->get()` reads `/me/profile`.** It asked
+  `/iam/identity/me`, a route the API no longer serves, so the call failed
+  with a 404 against every live Road. The test backend answers the new path.
+
 ### Added
 
 - `CreateDeveloperPlatformDto::$description` (optional, last argument).
 - `IssuePresenceAssertionDto`, the body of `POST bridge/presence-assertions`.
 - `PlatformFunnelResponse`, `PlatformFunnelView` and `PlatformFunnelStepView`,
   the response of `GET developer/platforms/{publicId}/funnel`.
+
+- **`Road::roadUserId()`** (F4.6, D18 in plan 68). `Road::userId()` is the
+  Auth Server user id, while Bridge (`onBehalfOfUser`, the person a provider
+  route names), IAM subjects and webhook payloads speak the Road user id. The
+  new method reads `/me/profile` the first time a session asks and keeps the
+  id in the session's `TokenSet` (a refresh carries it over), so later
+  requests make no call. When Road cannot be read it throws the client's
+  exception rather than return the wrong id. `actingAsRoadUser()` seeds it.
+
+- **`bridge()->exchangeForUser($audience, $scope, $businessUnitId)`** (F4.1,
+  plan 68). Inside a `road`-protected route it asks Road for the presence
+  assertion with the signed-in person's session, then exchanges your service
+  credential for a token audienced at the provider, and returns the OAuth
+  payload. `bridge()->presenceAssertion($businessUnitId)` is the first step
+  alone. A refusal throws `RoadBridgeExchangeException`, whose `errorCode()` is
+  Road's code (`BU_NOT_SUBSCRIBED_TO_PLATFORM`, …) and whose `description` says
+  the next step; a missing service credential, platform id or person throws
+  `RoadBridgeSetupException` before anything is sent. New config key
+  `road.platform_id`, from `ROAD_PLATFORM_ID`.
+
+- **`road:doctor` checks Bridge provider readiness, with nobody signed in**
+  (F7.2 in plan 68). With a service credential configured, it gets a service
+  token and asks `POST /bridge/authorize` about a token that cannot be real:
+  `UNKNOWN_PROVIDER` fails (the credential belongs to no platform),
+  `PROVIDER_NOT_HOMOLOGATED` warns (the platform is not homologated as a
+  provider; a consumer-only app never is), and `INVALID_BROKERED_TOKEN` passes.
+  Without a service credential the probe is skipped and fails nothing. Neither
+  the credential nor the token is printed. Same checks and wording as
+  `npx road doctor`.
+- **`road:doctor` prints the environment and the Road API base it resolved**
+  (`Environment: production`, `Road API: https://api.plat.eduzz.com — the
+  hosted URL for production`), so a run says which instance it probed.
+- A failed service-token request's `RoadAuthnException::payload()` now carries
+  the token endpoint's `status`.
+
+- **`Road::client()->bridge()->audit($platformId, 'inbound'|'outbound')`**
+  (IR-069, plan 68). The platform owner's own Bridge audit: token exchanges,
+  checks, attempts and grant changes the platform took part in, as
+  `BridgeAuditEntry` rows that name the other platform and the decision.
+  Iterating walks every page; `firstPage()` returns one. It needs the owner's
+  user token, so the service credential gets 403.
+
+- **`ExtensionSessionVerifier` checks the embed session context** (IR-026,
+  plan 68). An extension's backend hands it what its iframe forwarded (`signed`
+  from `useExtensionHost` in `@b1-road/react/extension`) and gets back an
+  `ExtensionSession`: the Road user id, the install, the extension and the
+  business unit. A refusal is a `RoadExtensionSessionException` (401) with the
+  same codes as the Node SDKs: `malformed`, `signature_mismatch`,
+  `unsupported_version`, `expired`, `not_yet_valid`, `install_mismatch`. The
+  HMAC is compared in constant time, 30 seconds of clock skew are tolerated,
+  and `expectInstall:` / `maxAgeSeconds:` tighten the check. Tested against
+  `SESSION_CONTEXT_SIGNING_VECTOR` from `@b1-road/types/extensions`, so no
+  hand-rolled HMAC is needed.
+
+- `UpdateDeveloperOperationalDto`, the body of the developer route
+  `PATCH /developer/platforms/{id}/operational`. It has every field of
+  `UpdateOperationalDto` except the login client id, which Road sets itself.
 
 ## [0.1.0-alpha.5] — 2026-10-05
 
