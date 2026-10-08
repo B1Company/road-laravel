@@ -11,6 +11,8 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6] — 2026-10-08
+
 The generated DTOs in `src/DTO/Generated/` were regenerated from a contract
 hub that had not been re-emitted since 2026-08-21 (plan 68, N23). They now
 match the API again, and CI now fails any API change that leaves the
@@ -26,9 +28,9 @@ committed hub behind, so it should not drift again.
 - **Breaking for positional construction: new optional properties sit in the
   middle of two constructors.** `CreatePlatformDto` gains `description` after
   `slug`, and `UpdateOperationalDto` gains `releaseVersion`, `description` and
-  `showcaseOptIn` before `zitadelClientId`. Named arguments and `::from([...])`
-  are unaffected. If you pass these arguments by position, switch to named
-  ones.
+  `showcaseOptIn` before the login client id. Named arguments and
+  `::from([...])` are unaffected. If you pass these arguments by position,
+  switch to named ones.
 - **A refusal from Road drops the token's cached answer** (D4 in plan 68,
   B1-712). `road.bridge` never answered a refusal from cache, but it kept the
   entry, so with `max_staleness` raised a later outage could serve an allow
@@ -511,6 +513,7 @@ committed hub behind, so it should not drift again.
 - **Tooling**: `road:install`, `road:doctor`, `road:whoami`, and
   `road:generate-dtos` (OpenAPI-contract codegen with a `--check` drift gate).
 
+[0.1.0-alpha.6]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.5...v0.1.0-alpha.6
 [0.1.0-alpha.5]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.4...v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.3...v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
