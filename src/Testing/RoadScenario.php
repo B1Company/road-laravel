@@ -38,6 +38,15 @@ final class RoadScenario
      */
     public array $invitationsByBu = [];
 
+    /**
+     * Each declared invitation's link token, keyed by invitation id. Kept off
+     * the invitation rows so no fake response can carry one, as the API never
+     * returns it. Read it in a test with `$fake->invitationToken($id)`.
+     *
+     * @var array<string, string>
+     */
+    public array $invitationTokens = [];
+
     public static function make(): self
     {
         return new self;
@@ -142,7 +151,9 @@ final class RoadScenario
 
     /**
      * Declare a pending (or otherwise-stated) invitation on a BU so the fake
-     * can serve `businessUnits($buId)->invitations()` listings.
+     * can serve `businessUnits($buId)->invitations()` listings. Accepting it
+     * takes its link token: pass `$token` to choose it, or read the default
+     * with `$fake->invitationToken($id)`.
      */
     public function withInvitation(
         string $buId,
@@ -151,6 +162,7 @@ final class RoadScenario
         ?string $roleName = null,
         string $status = 'pending',
         ?string $id = null,
+        ?string $token = null,
     ): self {
         if (! isset($this->businessUnits[$buId])) {
             throw new \InvalidArgumentException(
@@ -159,8 +171,10 @@ final class RoadScenario
         }
 
         $this->invitationsByBu[$buId] ??= [];
+        $id ??= 'inv_'.$buId.'_'.count($this->invitationsByBu[$buId]);
+        $this->invitationTokens[$id] = $token ?? 'fake-invite-token-'.$id;
         $this->invitationsByBu[$buId][] = [
-            'id' => $id ?? 'inv_'.$buId.'_'.count($this->invitationsByBu[$buId]),
+            'id' => $id,
             'email' => $email,
             'roleId' => $roleId,
             'roleName' => $roleName ?? $roleId,

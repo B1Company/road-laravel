@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace B1Road\Laravel\Testing;
 
 use B1Road\Laravel\Authorization\Permission;
+use B1Road\Laravel\Client\ErrorMapper;
+use B1Road\Laravel\Exceptions\RoadException;
 use B1Road\Laravel\Exceptions\RoadNotFoundException;
 
 /**
@@ -23,7 +25,53 @@ final class InMemoryBackend
     /** @var list<array{method:string, path:string, body:?array<string,mixed>}> */
     public array $calls = [];
 
-    public function __construct(public readonly RoadScenario $scenario) {}
+    /**
+     * Each invitation's live link token and status, keyed by invitation id
+     * (B1-761). Private on purpose: the rows the fake serves never carry a
+     * token, as the API never returns one.
+     *
+     * @var array<string, array{token:string, status:string}>
+     */
+    private array $inviteLinks = [];
+
+    /**
+     * Invitations created through the fake, keyed by id, so they can be
+     * accepted like declared ones.
+     *
+     * @var array<string, array<string,mixed>>
+     */
+    private array $createdInvitations = [];
+
+    public function __construct(public readonly RoadScenario $scenario)
+    {
+        foreach ($scenario->invitationsByBu as $list) {
+            foreach ($list as $invitation) {
+                $id = (string) $invitation['id'];
+                $this->inviteLinks[$id] = [
+                    'token' => $scenario->invitationTokens[$id] ?? 'fake-invite-token-'.$id,
+                    'status' => (string) $invitation['status'],
+                ];
+            }
+        }
+    }
+
+    /**
+     * The token the invitation's latest email link carries. Test-only: read
+     * it through `RoadFakeAssertions::invitationToken()`.
+     *
+     * @throws \InvalidArgumentException when no invitation has that id.
+     */
+    public function invitationToken(string $invitationId): string
+    {
+        if (! isset($this->inviteLinks[$invitationId])) {
+            throw new \InvalidArgumentException(sprintf(
+                'No invitation %s in the fake. Declare it with RoadScenario::withInvitation() or create it through the client first.',
+                $invitationId,
+            ));
+        }
+
+        return $this->inviteLinks[$invitationId]['token'];
+    }
 
     /**
      * @param  array<string,mixed>|null  $body
@@ -185,24 +233,44 @@ final class InMemoryBackend
         }
 
         if ($method === 'GET' && preg_match('#^/organization/business-units/([^/]+)/invitations$#', $path, $m) === 1) {
-            return $this->paginate($this->scenario->invitationsByBu[$m[1]] ?? []);
+            return $this->paginate(array_map(
+                fn (array $invitation): array => $this->withLiveStatus($invitation),
+                $this->scenario->invitationsByBu[$m[1]] ?? [],
+            ));
         }
 
         if ($method === 'POST' && preg_match('#^/organization/business-units/([^/]+)/invitations$#', $path) === 1) {
-            return ['status' => 201, 'body' => ['data' => $this->makeInvitation(
-                'inv_new',
+            $id = 'inv_new'.($this->createdInvitations === [] ? '' : '_'.(count($this->createdInvitations) + 1));
+            $invitation = $this->makeInvitation(
+                $id,
                 (string) ($body['email'] ?? ''),
                 (string) ($body['roleId'] ?? 'r_member'),
                 'pending',
-            )]];
+            );
+            $this->createdInvitations[$id] = $invitation;
+            $this->inviteLinks[$id] = ['token' => $this->mintToken($id), 'status' => 'pending'];
+
+            return ['status' => 201, 'body' => ['data' => $invitation]];
         }
 
         if ($method === 'POST' && preg_match('#^/organization/business-units/([^/]+)/invitations/([^/]+)/cancel$#', $path, $m) === 1) {
+            $this->closeLink($m[2], 'cancelled');
+
             return ['status' => 200, 'body' => ['data' => $this->transitionInvitation($m[2], 'cancelled')]];
         }
 
-        if ($method === 'POST' && preg_match('#^/organization/invitations/([^/]+)/(accept|reject)$#', $path, $m) === 1) {
-            return ['status' => 200, 'body' => ['data' => $this->transitionInvitation($m[1], $m[2] === 'accept' ? 'accepted' : 'rejected')]];
+        if ($method === 'POST' && preg_match('#^/organization/business-units/([^/]+)/invitations/([^/]+)/resend$#', $path, $m) === 1) {
+            return ['status' => 200, 'body' => ['data' => $this->resendInvitation($path, $m[2])]];
+        }
+
+        if ($method === 'POST' && preg_match('#^/organization/invitations/([^/]+)/accept$#', $path, $m) === 1) {
+            return ['status' => 200, 'body' => ['data' => $this->acceptInvitation($path, $m[1], $body ?? [])]];
+        }
+
+        if ($method === 'POST' && preg_match('#^/organization/invitations/([^/]+)/reject$#', $path, $m) === 1) {
+            $this->closeLink($m[1], 'rejected');
+
+            return ['status' => 200, 'body' => ['data' => $this->transitionInvitation($m[1], 'rejected')]];
         }
 
         if ($method === 'GET' && preg_match('#^/organization/business-units/([^/]+)$#', $path, $m) === 1) {
@@ -526,6 +594,146 @@ final class InMemoryBackend
     }
 
     /**
+     * Mirror of `POST /organization/invitations/{id}/accept` (B1-761), in the
+     * API's order: body validation (400), unknown id (409
+     * `INVITATION_NOT_FOUND`), the link token (403 `INVITATION_LINK_INVALID`),
+     * then status (409 `INVALID_STATUS_TRANSITION`, which is what a token that
+     * was already used gets). Nothing changes until every check passes. Expiry
+     * (410) is not modelled: scenario dates are fixed placeholders in the past.
+     *
+     * @param  array<string,mixed>  $body
+     * @return array<string,mixed>
+     */
+    private function acceptInvitation(string $path, string $invitationId, array $body): array
+    {
+        $token = $body['token'] ?? null;
+
+        // The DTO: @IsString() @IsNotEmpty() @MaxLength(128).
+        $violations = [];
+        if (! is_string($token)) {
+            $violations[] = 'token must be a string';
+        }
+        if ($token === null || $token === '') {
+            $violations[] = 'token should not be empty';
+        }
+        if (! is_string($token) || strlen($token) > 128) {
+            $violations[] = 'token must be shorter than or equal to 128 characters';
+        }
+        if ($violations !== []) {
+            throw $this->apiError(400, $path, implode('; ', $violations), errors: array_map(
+                static fn (string $message): array => ['field' => 'token', 'code' => 'INVALID_FORMAT', 'message' => $message],
+                $violations,
+            ));
+        }
+
+        $link = $this->inviteLinks[$invitationId] ?? null;
+        if ($link === null) {
+            throw $this->apiError(409, $path, 'INVITATION_NOT_FOUND', code: 'INVITATION_NOT_FOUND');
+        }
+        if (! hash_equals($link['token'], (string) $token)) {
+            throw $this->apiError(
+                403,
+                $path,
+                'This link does not match the invitation. Open the link from the most recent invitation email, or ask the business unit to send a new invitation.',
+                code: 'INVITATION_LINK_INVALID',
+            );
+        }
+        if ($link['status'] !== 'pending') {
+            throw $this->apiError(409, $path, 'INVALID_STATUS_TRANSITION', code: 'INVALID_STATUS_TRANSITION');
+        }
+
+        $this->inviteLinks[$invitationId]['status'] = 'accepted';
+
+        return $this->transitionInvitation($invitationId, 'accepted');
+    }
+
+    /**
+     * Mirror of `POST .../invitations/{id}/resend`: a NEW link token, so the
+     * previous email's link stops working.
+     *
+     * @return array<string,mixed>
+     */
+    private function resendInvitation(string $path, string $invitationId): array
+    {
+        $link = $this->inviteLinks[$invitationId] ?? null;
+        if ($link === null) {
+            throw $this->apiError(409, $path, 'INVITATION_NOT_FOUND', code: 'INVITATION_NOT_FOUND');
+        }
+        if ($link['status'] !== 'pending') {
+            throw $this->apiError(409, $path, 'INVALID_STATUS_TRANSITION', code: 'INVALID_STATUS_TRANSITION');
+        }
+
+        $this->inviteLinks[$invitationId]['token'] = $this->mintToken($invitationId);
+
+        return $this->transitionInvitation($invitationId, 'pending');
+    }
+
+    /** An obviously fake, unique link token. Never a real secret. */
+    private function mintToken(string $invitationId): string
+    {
+        return 'fake-invite-token-'.$invitationId.'-'.bin2hex(random_bytes(4));
+    }
+
+    /** Move a still-pending invitation's link to a closing status. */
+    private function closeLink(string $invitationId, string $status): void
+    {
+        if (($this->inviteLinks[$invitationId]['status'] ?? null) === 'pending') {
+            $this->inviteLinks[$invitationId]['status'] = $status;
+        }
+    }
+
+    /**
+     * A declared row with the status its link has reached since, so a listing
+     * agrees with what accept, cancel and reject did.
+     *
+     * @param  array<string,mixed>  $invitation
+     * @return array<string,mixed>
+     */
+    private function withLiveStatus(array $invitation): array
+    {
+        $status = $this->inviteLinks[(string) $invitation['id']]['status'] ?? null;
+        if ($status !== null && $status !== $invitation['status']) {
+            $invitation['status'] = $status;
+            $invitation['acceptedVia'] = $status === 'accepted' ? 'manual' : null;
+        }
+
+        return $invitation;
+    }
+
+    /**
+     * The exception the real transport raises for this API refusal: the
+     * Problem Details body the API writes, mapped by the same ErrorMapper.
+     *
+     * @param  list<array{field:string, code:string, message:string}>|null  $errors
+     */
+    private function apiError(int $status, string $path, string $detail, ?string $code = null, ?array $errors = null): RoadException
+    {
+        $kinds = [
+            400 => ['validation-error', 'Validation Error'],
+            403 => ['permission-denied', 'Permission Denied'],
+            409 => ['conflict', 'Conflict'],
+        ];
+        [$type, $title] = $kinds[$status];
+
+        $problem = [
+            'type' => 'https://api.plat.eduzz.com/errors/'.$type,
+            'title' => $title,
+            'status' => $status,
+            'detail' => $detail,
+            'instance' => '/api/alpha'.$path,
+            'meta' => ['requestId' => null, 'timestamp' => gmdate('Y-m-d\TH:i:s.v\Z')],
+        ];
+        if ($errors !== null) {
+            $problem['errors'] = $errors;
+        }
+        if ($code !== null) {
+            $problem['code'] = $code;
+        }
+
+        return ErrorMapper::map($status, $problem);
+    }
+
+    /**
      * Find a declared invitation by id (across BUs) and return it with the
      * new status, synthesising one when the test didn't declare it.
      *
@@ -542,6 +750,14 @@ final class InMemoryBackend
                     return $invitation;
                 }
             }
+        }
+
+        if (isset($this->createdInvitations[$id])) {
+            $invitation = $this->createdInvitations[$id];
+            $invitation['status'] = $status;
+            $invitation['acceptedVia'] = $status === 'accepted' ? 'manual' : null;
+
+            return $invitation;
         }
 
         return $this->makeInvitation($id, 'unknown@test.local', 'r_member', $status);

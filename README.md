@@ -367,7 +367,30 @@ it('lists my business units', function () {
 `Road::fake($scenario)` swaps the container's `RoadClient` binding for a
 test instance routed through an in-memory backend. The returned
 `RoadFakeAssertions` object is the only supported assertions surface —
-`assertCalled`, `assertNothingCalled`, `assertCallCount`.
+`assertCalled`, `assertNothingCalled`, `assertCallCount`, and
+`invitationToken`.
+
+**Invitation links.** Accepting an invitation takes the single-use token from
+its link, in the fake as on the API. No fake response carries the token, so
+read it from the fake:
+
+```php
+$fake = Road::fake(
+    RoadScenario::make()
+        ->withUser('u_1', email: 'ana@b1.app')
+        ->withBusinessUnit('bu_1')
+        ->withInvitation('bu_1', 'ana@b1.app', id: 'inv_1') // or token: '...'
+);
+
+Road::client()->invitations()->accept('inv_1', $fake->invitationToken('inv_1'));
+```
+
+The fake refuses what the API refuses, with the same exceptions and
+`errorCode()`: an empty token is a `RoadValidationException` (400), a wrong one
+a `RoadAuthzException` (403, `INVITATION_LINK_INVALID`), a token already used a
+`RoadConflictException` (409, `INVALID_STATUS_TRANSITION`). A resend
+(`POST /organization/business-units/{buId}/invitations/{id}/resend`) mints a new
+token and the previous one stops working.
 
 ## Telemetry
 
