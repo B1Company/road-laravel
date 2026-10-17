@@ -11,6 +11,14 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Changed
+
+- **`invitations()->accept($id, $token)` takes the single-use token from the invitation link** (B1-761). The API requires it; the signed-in email is no longer compared against the invited one. `AcceptInvitationDto` is generated from the contract.
+
+### Fixed
+
+- **`Road::fake()` now requires the invitation link token, as the API does** (B1-761). The in-memory backend answered `invitations()->accept($id, $token)` with 200 whatever the token was, so a test that passed a wrong one passed and the code then failed against the API. It now answers like the API: an empty or missing token is a `RoadValidationException` (400), a wrong one a `RoadAuthzException` (403 `INVITATION_LINK_INVALID`), a token already used a `RoadConflictException` (409 `INVALID_STATUS_TRANSITION`), an unknown id 409 `INVITATION_NOT_FOUND`. The fake serves the resend route, which mints a new token and retires the old one, and listings show the status accept, cancel and reject left. Read a token with the new `$fake->invitationToken($id)`; `RoadScenario::withInvitation()` takes an optional `token:`. Invitations created through the fake get ids `inv_new`, `inv_new_2`, …
+
 ## [0.1.0-alpha.6] — 2026-10-08
 
 The generated DTOs in `src/DTO/Generated/` were regenerated from a contract
