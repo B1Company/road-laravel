@@ -11,9 +11,11 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+## [0.1.0-alpha.7] — 2026-10-17
+
 ### Changed
 
-- **`invitations()->accept($id, $token)` takes the single-use token from the invitation link** (B1-761). The API requires it; the signed-in email is no longer compared against the invited one. `AcceptInvitationDto` is generated from the contract.
+- **Breaking: `invitations()->accept($id, $token)` takes the single-use token from the invitation link** (B1-761). The API requires it; the signed-in email is no longer compared against the invited one. `AcceptInvitationDto` is generated from the contract.
 
 ### Fixed
 
@@ -521,6 +523,7 @@ committed hub behind, so it should not drift again.
 - **Tooling**: `road:install`, `road:doctor`, `road:whoami`, and
   `road:generate-dtos` (OpenAPI-contract codegen with a `--check` drift gate).
 
+[0.1.0-alpha.7]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.6...v0.1.0-alpha.7
 [0.1.0-alpha.6]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.5...v0.1.0-alpha.6
 [0.1.0-alpha.5]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.4...v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.3...v0.1.0-alpha.4
