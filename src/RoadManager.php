@@ -19,7 +19,6 @@ use B1Road\Laravel\Client\RoadClient;
 use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\Exceptions\RoadAuthnException;
 use B1Road\Laravel\Exceptions\RoadAuthzException;
-use B1Road\Laravel\Exceptions\RoadNotFoundException;
 use B1Road\Laravel\Telemetry\RoadTelemetry;
 use B1Road\Laravel\Testing\FakeHttpTransport;
 use B1Road\Laravel\Testing\FakeRoadClientFactory;
@@ -103,8 +102,10 @@ final class RoadManager
      * Read from Road (`/me/session`, with the ID token's `sid`) the first time
      * a session asks, then kept with the session's tokens. Null when no one is
      * signed in, or when Road could not answer (the next call retries): treat
-     * null like `true` wherever a wrong `false` would matter. A 404 (not the
-     * caller's session, or a Road without the route) is a definite `false`.
+     * null like `true` wherever a wrong `false` would matter. Anything that
+     * confirms nothing (no `sid`, a 404 because Road did not recognise the
+     * session) is null too, and nothing is kept: a stale or wrong `sid` must
+     * never read as "not support".
      */
     public function supportSession(): ?bool
     {
@@ -121,15 +122,14 @@ final class RoadManager
 
         $sid = $tokens?->userPayload['sid'] ?? null;
         if (! is_string($sid) || $sid === '') {
-            $answer = false;
-        } else {
-            try {
-                $answer = $this->client()->me()->supportSession($sid);
-            } catch (RoadNotFoundException) {
-                $answer = false;
-            } catch (Throwable) {
-                return null;
-            }
+            return null;
+        }
+        try {
+            $answer = $this->client()->me()->supportSession($sid);
+        } catch (Throwable) {
+            // A 404 included: Road did not recognise the session, which
+            // confirms nothing either way.
+            return null;
         }
         if ($tokens !== null) {
             $store->put($tokens->withSupportSession($answer));

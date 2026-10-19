@@ -113,21 +113,21 @@ it('the fake answers 404 for a session id that is not the caller\'s', function (
     expect(Road::client()->me()->supportSession('sid-u_agent'))->toBeTrue();
 });
 
-it('is a definite false on a 404, so it is not asked again', function () {
+it('is unknown (null), never false, on a 404, and keeps nothing', function () {
     $store = signInForSupport();
     Http::fake([
         'api.road.test/api/alpha/me/session*' => Http::response(['code' => 'SESSION_NOT_FOUND'], 404),
     ]);
 
-    expect(Road::supportSession())->toBeFalse();
-    expect($store->get()?->supportSession)->toBeFalse();
+    expect(Road::supportSession())->toBeNull();
+    expect($store->get()?->supportSession)->toBeNull();
 });
 
-it('is false, without asking, for an ID token that carries no sid', function () {
+it('is unknown, without asking, for an ID token that carries no sid', function () {
     signInForSupport(payload: ['sub' => SUPPORT_SUB]);
     Http::fake();
 
-    expect(Road::supportSession())->toBeFalse();
+    expect(Road::supportSession())->toBeNull();
     Http::assertNothingSent();
 });
 
