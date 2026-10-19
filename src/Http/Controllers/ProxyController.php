@@ -113,12 +113,32 @@ final class ProxyController extends Controller
         $version = trim((string) $this->config->get('road.api.version', 'alpha'), '/');
         $url = $base.'/api/'.$version.'/'.ltrim($path, '/');
 
-        $query = $request->getQueryString();
-        if (is_string($query) && $query !== '') {
+        $query = $this->withSessionId($path, $request);
+        if ($query !== '') {
             $url .= '?'.$query;
         }
 
         return $url;
+    }
+
+    /**
+     * `GET /me/session` needs the sign-in's session id, the ID token's `sid`
+     * (plan 69: is this an Eduzz support session?). The browser never sees
+     * the ID token, so the proxy, which holds it, fills `sessionId` in when
+     * the request did not send one. Any other request goes through as it came.
+     */
+    private function withSessionId(string $path, Request $request): string
+    {
+        $query = (string) $request->getQueryString();
+        if ($request->method() !== 'GET' || ltrim($path, '/') !== 'me/session' || $request->query->has('sessionId')) {
+            return $query;
+        }
+        $sid = $this->context->user()?->payload['sid'] ?? null;
+        if (! is_string($sid) || $sid === '') {
+            return $query;
+        }
+
+        return ltrim($query.'&'.http_build_query(['sessionId' => $sid]), '&');
     }
 
     private function buildPendingRequest(string $token, Request $request): PendingRequest

@@ -17,7 +17,11 @@ use B1Road\Laravel\Context\RoadContext;
  */
 trait ActsAsRoadUser
 {
-    protected function actingAsRoadUser(string $userId, string $email = '', string $name = ''): static
+    /**
+     * @param  bool  $supportSession  Sign in as an Eduzz support agent acting
+     *                                for this user (plan 69).
+     */
+    protected function actingAsRoadUser(string $userId, string $email = '', string $name = '', bool $supportSession = false): static
     {
         $user = new RoadUser(
             id: $userId,
@@ -42,10 +46,13 @@ trait ActsAsRoadUser
                 'sub' => $userId,
                 'email' => $user->email,
                 'name' => $user->name,
+                'sid' => 'sid-'.$userId,
             ],
             // The scenario names a person by one id, so `Road::roadUserId()`
             // answers it without a profile read.
             roadUserId: $userId,
+            // And `Road::supportSession()` answers without a `/me/session` read.
+            supportSession: $supportSession,
         ));
 
         return $this;

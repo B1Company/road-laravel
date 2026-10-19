@@ -11,6 +11,9 @@ final readonly class TokenSet
      * @param  string|null  $roadUserId  The person's Road user id (a UUID), kept
      *                                   once `Road::roadUserId()` has read it. Not
      *                                   `userPayload['sub']`, the Auth Server id.
+     * @param  bool|null  $supportSession  Whether an Eduzz support agent opened
+     *                                     the session (plan 69), kept once
+     *                                     `Road::supportSession()` has read it.
      */
     public function __construct(
         public string $accessToken,
@@ -19,6 +22,7 @@ final readonly class TokenSet
         public int $expiresAt,
         public array $userPayload,
         public ?string $roadUserId = null,
+        public ?bool $supportSession = null,
     ) {}
 
     public function isExpired(int $now = 0): bool
@@ -35,6 +39,20 @@ final readonly class TokenSet
             expiresAt: $this->expiresAt,
             userPayload: $this->userPayload,
             roadUserId: $roadUserId,
+            supportSession: $this->supportSession,
+        );
+    }
+
+    public function withSupportSession(bool $supportSession): self
+    {
+        return new self(
+            accessToken: $this->accessToken,
+            refreshToken: $this->refreshToken,
+            idToken: $this->idToken,
+            expiresAt: $this->expiresAt,
+            userPayload: $this->userPayload,
+            roadUserId: $this->roadUserId,
+            supportSession: $supportSession,
         );
     }
 
@@ -48,6 +66,7 @@ final readonly class TokenSet
             'expiresAt' => $this->expiresAt,
             'userPayload' => $this->userPayload,
             'roadUserId' => $this->roadUserId,
+            'supportSession' => $this->supportSession,
         ];
     }
 
@@ -61,6 +80,7 @@ final readonly class TokenSet
             expiresAt: (int) $data['expiresAt'],
             userPayload: (array) ($data['userPayload'] ?? []),
             roadUserId: isset($data['roadUserId']) ? (string) $data['roadUserId'] : null,
+            supportSession: isset($data['supportSession']) ? (bool) $data['supportSession'] : null,
         );
     }
 }

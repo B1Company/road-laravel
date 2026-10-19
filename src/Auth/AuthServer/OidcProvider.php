@@ -161,9 +161,13 @@ final class OidcProvider
         $tokenSet = $this->buildTokenSet($tokens, $idClaims, fallbackRefresh: $refreshToken);
         // The token endpoint knows nothing of Road's id, and a refresh cannot
         // change the person: keep it, or every rotation costs a profile read.
-        $roadUserId = $this->tokenStore->get()?->roadUserId;
-        if ($roadUserId !== null) {
-            $tokenSet = $tokenSet->withRoadUserId($roadUserId);
+        $previous = $this->tokenStore->get();
+        if ($previous?->roadUserId !== null) {
+            $tokenSet = $tokenSet->withRoadUserId($previous->roadUserId);
+        }
+        // Same for the support answer: it belongs to the sign-in a refresh continues.
+        if ($previous?->supportSession !== null) {
+            $tokenSet = $tokenSet->withSupportSession($previous->supportSession);
         }
         $this->tokenStore->put($tokenSet);
 

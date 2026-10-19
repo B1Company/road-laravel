@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace B1Road\Laravel\Inertia;
 
 use B1Road\Laravel\Context\RoadContext;
+use B1Road\Laravel\Facades\Road;
 use Closure;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Request;
@@ -62,7 +63,11 @@ final class ShareRoadContext
 
         return [
             'apiBaseUrl' => '/'.ltrim($proxyPrefix, '/'),
-            'user' => $user?->toArray(),
+            'user' => $user === null ? null : [
+                ...$user->toArray(),
+                // Plan 69: whether Eduzz support is acting for the person.
+                'supportSession' => Road::supportSession(),
+            ],
             'currentBusinessUnitId' => $request->session()->get('road.current_business_unit_id'),
             'loginUrl' => '/auth/road/login',
             'logoutUrl' => '/auth/road/logout',

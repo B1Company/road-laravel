@@ -74,6 +74,17 @@ the other is expected is refused or matches nobody. The SDK reads
 session's tokens. If Road can't be reached, it throws the client's exception
 instead of handing you the wrong id.
 
+**Eduzz support sessions.** `Road::supportSession()` is `true` when an Eduzz
+support agent opened the session on the person's behalf: your app acts for
+them, but they aren't at the keyboard. Show it, or hold back actions only the
+person should take. The SDK reads it from Road the first time a session asks
+and keeps it with the session's tokens. `null` means no one is signed in or
+Road couldn't answer yet (the next call asks again); treat it like `true`
+wherever a wrong `false` would matter. Inertia pages get it as
+`road.user.supportSession`. In tests: `$this->actingAsRoadUser($id,
+supportSession: true)`, or `RoadScenario::make()->withUser($id,
+supportSession: true)`.
+
 ### 2. Render Road widgets in Inertia
 
 `road:install` already copied the React provider into your app, at
