@@ -131,3 +131,54 @@ it('passes upstream non-2xx status through unchanged', function () {
         ->assertStatus(404)
         ->assertJsonPath('error.code', 'not_found');
 });
+
+// Plan 69 (B1-770): the browser never sees the ID token, so the proxy fills
+// the session's `sid` in on GET /me/session, and touches nothing else.
+function seedSessionWithSid(?string $sid = '395805716146873749'): void
+{
+    /** @var TokenStore $store */
+    $store = app(TokenStore::class);
+    $store->put(new TokenSet(
+        accessToken: 'sess-bearer-123',
+        refreshToken: 'rt',
+        idToken: null,
+        expiresAt: time() + 3600,
+        userPayload: array_filter(['sub' => 'u_proxy', 'email' => 'p@example.com', 'sid' => $sid]),
+    ));
+}
+
+it('fills in the session id on GET /me/session', function () {
+    seedSessionWithSid();
+    Http::fake(['api.road.test/api/alpha/me/session*' => Http::response(['data' => ['supportSession' => true]], 200)]);
+
+    $this->getJson('/road-api/me/session')->assertOk()->assertJsonPath('data.supportSession', true);
+
+    Http::assertSent(fn (HttpRequest $req) => ($req->data()['sessionId'] ?? null) === '395805716146873749');
+});
+
+it('keeps a sessionId the caller sent', function () {
+    seedSessionWithSid();
+    Http::fake(['api.road.test/api/alpha/me/session*' => Http::response(['data' => ['supportSession' => false]], 200)]);
+
+    $this->getJson('/road-api/me/session?sessionId=other')->assertOk();
+
+    Http::assertSent(fn (HttpRequest $req) => ($req->data()['sessionId'] ?? null) === 'other');
+});
+
+it('does not add a session id to other paths', function () {
+    seedSessionWithSid();
+    Http::fake(['api.road.test/api/alpha/me/business-units*' => Http::response(['data' => ['memberships' => []]], 200)]);
+
+    $this->getJson('/road-api/me/business-units')->assertOk();
+
+    Http::assertSent(fn (HttpRequest $req) => ! str_contains($req->url(), 'sessionId'));
+});
+
+it('sends no session id it does not have', function () {
+    seedSessionWithSid(null);
+    Http::fake(['api.road.test/api/alpha/me/session*' => Http::response(['data' => ['supportSession' => false]], 200)]);
+
+    $this->getJson('/road-api/me/session')->assertOk();
+
+    Http::assertSent(fn (HttpRequest $req) => ! str_contains($req->url(), 'sessionId'));
+});
