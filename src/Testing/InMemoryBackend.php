@@ -96,6 +96,17 @@ final class InMemoryBackend
             return ['status' => 200, 'body' => ['data' => $user]];
         }
 
+        // Plan 69: whether the caller's session was opened by Eduzz support.
+        if ($method === 'GET' && $path === '/me/session') {
+            if ($userId === null || $this->scenario->findUser($userId) === null) {
+                throw new RoadNotFoundException('No active user in scenario.');
+            }
+
+            return ['status' => 200, 'body' => ['data' => [
+                'supportSession' => $this->scenario->isSupportSession($userId),
+            ]]];
+        }
+
         if ($method === 'GET' && $path === '/me/business-units') {
             $memberships = $userId !== null ? $this->scenario->memberships($userId)['memberships'] : [];
 

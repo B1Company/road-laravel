@@ -44,6 +44,12 @@ export type RoadInertiaProps = {
     name: string;
     email: string;
     avatarUrl?: string | null;
+    /**
+     * `true` when an Eduzz support agent opened the session for the person;
+     * `null` when Road could not answer (treat it like `true` wherever a
+     * wrong `false` would matter).
+     */
+    supportSession?: boolean | null;
   } | null;
   currentBusinessUnitId: string | null;
   loginUrl: string;

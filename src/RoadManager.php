@@ -19,6 +19,7 @@ use B1Road\Laravel\Client\RoadClient;
 use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\Exceptions\RoadAuthnException;
 use B1Road\Laravel\Exceptions\RoadAuthzException;
+use B1Road\Laravel\Exceptions\RoadNotFoundException;
 use B1Road\Laravel\Telemetry\RoadTelemetry;
 use B1Road\Laravel\Testing\FakeHttpTransport;
 use B1Road\Laravel\Testing\FakeRoadClientFactory;
@@ -29,6 +30,7 @@ use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Throwable;
 
 /**
  * The target of the Road facade. Only methods that are wired today
@@ -91,6 +93,49 @@ final class RoadManager
         }
 
         return $id;
+    }
+
+    /**
+     * Whether an Eduzz support agent opened this session on the person's
+     * behalf (plan 69): the app acts for them, but they are not at the
+     * keyboard. Show it, or hold back actions only the person should take.
+     *
+     * Read from Road (`/me/session`, with the ID token's `sid`) the first time
+     * a session asks, then kept with the session's tokens. Null when no one is
+     * signed in, or when Road could not answer (the next call retries): treat
+     * null like `true` wherever a wrong `false` would matter. A 404 (not the
+     * caller's session, or a Road without the route) is a definite `false`.
+     */
+    public function supportSession(): ?bool
+    {
+        if (! $this->context->isAuthenticated()) {
+            return null;
+        }
+
+        /** @var TokenStore $store */
+        $store = $this->container->make(TokenStore::class);
+        $tokens = $store->get();
+        if ($tokens?->supportSession !== null) {
+            return $tokens->supportSession;
+        }
+
+        $sid = $tokens?->userPayload['sid'] ?? null;
+        if (! is_string($sid) || $sid === '') {
+            $answer = false;
+        } else {
+            try {
+                $answer = $this->client()->me()->supportSession($sid);
+            } catch (RoadNotFoundException) {
+                $answer = false;
+            } catch (Throwable) {
+                return null;
+            }
+        }
+        if ($tokens !== null) {
+            $store->put($tokens->withSupportSession($answer));
+        }
+
+        return $answer;
     }
 
     public function token(): ?string
@@ -301,7 +346,7 @@ final class RoadManager
         $trace = null;
         try {
             $trace = $check->trace();
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // Best effort — the network-level error has already shown up
             // through `result()`. Throw the deny without a trace.
         }

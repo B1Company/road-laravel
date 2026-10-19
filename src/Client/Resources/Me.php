@@ -40,6 +40,19 @@ final class Me
     }
 
     /**
+     * Whether an Eduzz support agent opened the caller's sign-in session:
+     * `GET /me/session`. Pass the `sid` claim of the ID token from the same
+     * sign-in; a session that is not the caller's is a 404.
+     */
+    public function supportSession(string $sessionId): bool
+    {
+        $body = $this->http->request('GET', '/me/session', query: ['sessionId' => $sessionId]);
+        $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
+
+        return ($data['supportSession'] ?? false) === true;
+    }
+
+    /**
      * Revoke the caller's access: `POST /iam/identity/me/logout`.
      *
      * Terminates ALL of the caller's Auth Server sessions and stamps the

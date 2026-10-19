@@ -18,6 +18,9 @@ final class RoadScenario
     /** @var array<string, array{id:string, name:string, email:string, avatarUrl?:string}> */
     public array $users = [];
 
+    /** @var array<string,true> Users whose sessions Eduzz support opened (plan 69). */
+    public array $supportSessions = [];
+
     /** @var array<string, array{id:string, name:string, slug:string, status:string, memberCount:int, memberLimit:?int, joinCode:?string, createdAt:string, iamScopeId:string}> */
     public array $businessUnits = [];
 
@@ -57,7 +60,11 @@ final class RoadScenario
         ?string $name = null,
         ?string $email = null,
         ?string $avatarUrl = null,
+        bool $supportSession = false,
     ): self {
+        if ($supportSession) {
+            $this->supportSessions[$id] = true;
+        }
         $this->users[$id] = array_filter([
             'id' => $id,
             'name' => $name ?? $id,
@@ -205,6 +212,12 @@ final class RoadScenario
     public function findUser(string $id): ?array
     {
         return $this->users[$id] ?? null;
+    }
+
+    /** Whether this user's sessions were opened by Eduzz support (plan 69). */
+    public function isSupportSession(string $id): bool
+    {
+        return $this->supportSessions[$id] ?? false;
     }
 
     /** @return array<string,mixed>|null */
