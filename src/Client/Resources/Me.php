@@ -10,6 +10,7 @@ use B1Road\Laravel\DTO\Membership;
 use B1Road\Laravel\DTO\MyBusinessUnits;
 use B1Road\Laravel\DTO\MyPermissions;
 use B1Road\Laravel\DTO\Role;
+use B1Road\Laravel\Exceptions\RoadApiException;
 
 /**
  * `Road::client()->me()->*` — the calling user's own surface. Mirrors
@@ -47,9 +48,14 @@ final class Me
     public function supportSession(string $sessionId): bool
     {
         $body = $this->http->request('GET', '/me/session', query: ['sessionId' => $sessionId]);
-        $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
+        $answer = is_array($body['data'] ?? null) ? ($body['data']['supportSession'] ?? null) : null;
+        // An answer that is not a boolean is no answer: throwing keeps it
+        // from being kept as a `false`, and the next call asks again.
+        if (! is_bool($answer)) {
+            throw new RoadApiException('GET /me/session answered without a boolean data.supportSession.', 'malformed_response', 502);
+        }
 
-        return ($data['supportSession'] ?? false) === true;
+        return $answer;
     }
 
     /**

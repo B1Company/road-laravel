@@ -7,6 +7,7 @@ use B1Road\Laravel\Auth\AuthServer\TokenSet;
 use B1Road\Laravel\Auth\AuthServer\TokenStore;
 use B1Road\Laravel\Auth\RoadUser;
 use B1Road\Laravel\Context\RoadContext;
+use B1Road\Laravel\Exceptions\RoadNotFoundException;
 use B1Road\Laravel\Facades\Road;
 use B1Road\Laravel\Inertia\ShareRoadContext;
 use B1Road\Laravel\Testing\ActsAsRoadUser;
@@ -80,6 +81,36 @@ it('is unknown (null), not false, when Road cannot answer, and asks again next t
 
     expect(Road::supportSession())->toBeNull();
     expect($store->get()?->supportSession)->toBeNull();
+    $afterFirst = count(Http::recorded());
+
+    // Nothing was kept, so the next call asks Road again.
+    expect(Road::supportSession())->toBeNull();
+    expect(count(Http::recorded()))->toBe(2 * $afterFirst);
+});
+
+it('treats an answer without a boolean as unknown, and keeps nothing', function () {
+    $store = signInForSupport();
+    Http::fake([
+        'api.road.test/api/alpha/me/session*' => Http::response(['data' => ['supportSession' => 'yes']], 200),
+    ]);
+
+    expect(Road::supportSession())->toBeNull();
+    expect($store->get()?->supportSession)->toBeNull();
+});
+
+it('lets a later withUser reset the support flag', function () {
+    $scenario = RoadScenario::make()->withUser('u_1', supportSession: true)->withUser('u_1');
+
+    expect($scenario->isSupportSession('u_1'))->toBeFalse();
+});
+
+it('the fake answers 404 for a session id that is not the caller\'s', function () {
+    Road::fake(RoadScenario::make()->withUser('u_agent', supportSession: true));
+    $this->actingAsRoadUser('u_agent');
+
+    expect(fn () => Road::client()->me()->supportSession('sid-someone-else'))
+        ->toThrow(RoadNotFoundException::class);
+    expect(Road::client()->me()->supportSession('sid-u_agent'))->toBeTrue();
 });
 
 it('is a definite false on a 404, so it is not asked again', function () {

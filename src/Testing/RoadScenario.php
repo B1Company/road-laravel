@@ -62,8 +62,11 @@ final class RoadScenario
         ?string $avatarUrl = null,
         bool $supportSession = false,
     ): self {
+        // Each call says what this user is; a later `withUser($id)` resets it.
         if ($supportSession) {
             $this->supportSessions[$id] = true;
+        } else {
+            unset($this->supportSessions[$id]);
         }
         $this->users[$id] = array_filter([
             'id' => $id,

@@ -101,6 +101,13 @@ final class InMemoryBackend
             if ($userId === null || $this->scenario->findUser($userId) === null) {
                 throw new RoadNotFoundException('No active user in scenario.');
             }
+            // Like Road: a session that is not the caller's is a 404. A test
+            // session's id is `sid-<userId>` (ActsAsRoadUser), so a wrong
+            // `sid` passed along is caught here instead of answering anyway.
+            $sessionId = $query['sessionId'] ?? null;
+            if ($sessionId !== null && $sessionId !== 'sid-'.$userId) {
+                throw new RoadNotFoundException('No sign-in session with this id belongs to you.');
+            }
 
             return ['status' => 200, 'body' => ['data' => [
                 'supportSession' => $this->scenario->isSupportSession($userId),
