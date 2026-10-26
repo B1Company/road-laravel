@@ -11,15 +11,13 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
-### Changed
-
-- **`Road::supportSession()` returns `null` on a `/me/session` 404 or a missing `sid`** (plan 69, B1-770), and keeps nothing, instead of settling on `false`: a stale or wrong session id must never read as "not support".
+## [0.1.0-alpha.8] — 2026-10-26
 
 ### Added
 
-- **Generated DTOs for `GET /me/session`** (plan 69, B1-770): `MeSessionResponse` and `MeSessionView` (`supportSession`), regenerated from the contract hub. `Road::supportSession()` is the friendly way to read it.
+- **`Road::supportSession()`** (plan 69, B1-770). `true` when an Eduzz support agent opened the session on the person's behalf. Read from Road (`/me/session`, with the ID token's `sid`) the first time a session asks, then kept with its tokens across refresh. `null` means no one is signed in or Road could not answer yet. A `/me/session` 404 or a missing `sid` returns `null` too and keeps nothing, never `false`: a stale or wrong session id must never read as "not support". Inertia pages receive it as `road.user.supportSession`. Test mode: `actingAsRoadUser($id, supportSession: true)` and `RoadScenario::withUser($id, supportSession: true)`. The proxy fills `sessionId` in on `GET /me/session` from the session's ID token, so `@b1-road/react` in cookie mode can ask too.
 
-- **`Road::supportSession()`** (plan 69, B1-770). `true` when an Eduzz support agent opened the session on the person's behalf. Read from Road (`/me/session`, with the ID token's `sid`) the first time a session asks, then kept with its tokens across refresh. `null` means no one is signed in or Road could not answer yet. Inertia pages receive it as `road.user.supportSession`. Test mode: `actingAsRoadUser($id, supportSession: true)` and `RoadScenario::withUser($id, supportSession: true)`. The proxy fills `sessionId` in on `GET /me/session` from the session's ID token, so `@b1-road/react` in cookie mode can ask too.
+- **Generated DTOs for `GET /me/session`** (plan 69, B1-770): `MeSessionResponse` and `MeSessionView` (`supportSession`), regenerated from the contract hub. `Road::supportSession()` is the friendly way to read it.
 
 ## [0.1.0-alpha.7] — 2026-10-17
 
@@ -533,6 +531,7 @@ committed hub behind, so it should not drift again.
 - **Tooling**: `road:install`, `road:doctor`, `road:whoami`, and
   `road:generate-dtos` (OpenAPI-contract codegen with a `--check` drift gate).
 
+[0.1.0-alpha.8]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.7...v0.1.0-alpha.8
 [0.1.0-alpha.7]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.6...v0.1.0-alpha.7
 [0.1.0-alpha.6]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.5...v0.1.0-alpha.6
 [0.1.0-alpha.5]: https://github.com/B1Company/road-laravel/compare/v0.1.0-alpha.4...v0.1.0-alpha.5
