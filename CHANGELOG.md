@@ -11,6 +11,16 @@ contract from `alpha` to `v1` (see
 
 ## [Unreleased]
 
+### Changed
+
+- **`Road::supportSession()` returns `null` on a `/me/session` 404 or a missing `sid`** (plan 69, B1-770), and keeps nothing, instead of settling on `false`: a stale or wrong session id must never read as "not support".
+
+### Added
+
+- **Generated DTOs for `GET /me/session`** (plan 69, B1-770): `MeSessionResponse` and `MeSessionView` (`supportSession`), regenerated from the contract hub. `Road::supportSession()` is the friendly way to read it.
+
+- **`Road::supportSession()`** (plan 69, B1-770). `true` when an Eduzz support agent opened the session on the person's behalf. Read from Road (`/me/session`, with the ID token's `sid`) the first time a session asks, then kept with its tokens across refresh. `null` means no one is signed in or Road could not answer yet. Inertia pages receive it as `road.user.supportSession`. Test mode: `actingAsRoadUser($id, supportSession: true)` and `RoadScenario::withUser($id, supportSession: true)`. The proxy fills `sessionId` in on `GET /me/session` from the session's ID token, so `@b1-road/react` in cookie mode can ask too.
+
 ## [0.1.0-alpha.7] — 2026-10-17
 
 ### Changed
