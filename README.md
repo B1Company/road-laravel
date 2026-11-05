@@ -304,7 +304,8 @@ Road::can('read', 'Invoice')->inScope($scopeId)->check();
 
 `allowed_*` and `denied_*` reach you in `result()->reason`. `denied_unknown_code`
 means the catalog does not declare the code, which is usually a typo or the wrong
-catalog.
+catalog. A caller who holds nothing at that scope reads `denied_no_grant` instead,
+so a decision can't show a stranger what exists.
 
 `Road::client()->me()->permissions()` gives the caller's codes for hiding a
 button: `byBusinessUnit` for Road's, `byScope` for each subscription too, with
