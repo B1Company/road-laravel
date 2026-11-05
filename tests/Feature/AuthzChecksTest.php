@@ -5,6 +5,7 @@ declare(strict_types=1);
 use B1Road\Laravel\Auth\RoadUser;
 use B1Road\Laravel\Authorization\Action;
 use B1Road\Laravel\Authorization\Subject;
+use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\Client\RoadClient;
 use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\DTO\CheckDecision;
@@ -333,7 +334,44 @@ describe('the fake serves the control plane like the API', function () {
         $roles = app(RoadClient::class)->me()->platformRoles('plat_acme', 'bu_1');
 
         expect(array_map(fn ($r) => $r->id, $roles))->toBe(['role_InvoiceAdmin', 'role_RoleEditor']);
-        expect($roles[0]->scopeId)->toBe('sub_plat_acme_bu_1');
+        expect($roles[0]->scopeId)->toBe('scope_mgmt_plat_acme'); // the owner, above the subscription
+    });
+
+    it('refuses a role read with no scope, for a role owned above', function (string $path) {
+        Road::fake(platformScenario());
+        $this->actingAsRoadUser('u_owner');
+
+        expect(fn () => app(HttpTransportInterface::class)->request('GET', $path))
+            ->toThrow(RoadAuthzException::class);
+    })->with(['the role' => '/authz/roles/role_Owner', 'its permissions' => '/authz/roles/role_Owner/permissions']);
+
+    it('answers a role read from a scope that offers it', function () {
+        Road::fake(platformScenario());
+        $this->actingAsRoadUser('u_owner');
+        $iam = app(RoadClient::class)->iam();
+
+        expect($iam->scope('scope_bu_1')->roles()->get('role_Admin')->scopeId)->toBe('scope_road');
+        expect($iam->scope('sub_plat_acme_bu_1')->roles()->get('role_InvoiceAdmin')->scopeId)->toBe('scope_mgmt_plat_acme');
+        expect($iam->scope('sub_plat_acme_bu_1')->roles()->permissions('role_InvoiceAdmin')->all()[0]->code)->toBe('manage:Invoice');
+    });
+
+    it('is a 404 at a scope that does not offer the role', function () {
+        Road::fake(platformScenario());
+        $this->actingAsRoadUser('u_owner');
+        $iam = app(RoadClient::class)->iam();
+
+        expect(fn () => $iam->scope('scope_bu_1')->roles()->get('role_InvoiceAdmin'))->toThrow(RoadNotFoundException::class);
+        expect(fn () => $iam->scope('sub_plat_acme_bu_1')->roles()->permissions('role_Admin')->all())->toThrow(RoadNotFoundException::class);
+        expect(fn () => $iam->scope('scope_bu_1')->roles()->get('role_Nothing'))->toThrow(RoadNotFoundException::class);
+    });
+
+    it('is a 403 for a reader without read:Role at the scope, before the 404', function () {
+        Road::fake(platformScenario());
+        $this->actingAsRoadUser('u_member');
+        $iam = app(RoadClient::class)->iam();
+
+        expect(fn () => $iam->scope('scope_bu_1')->roles()->get('role_Admin'))->toThrow(RoadAuthzException::class);
+        expect(fn () => $iam->scope('scope_bu_1')->roles()->get('role_InvoiceAdmin'))->toThrow(RoadAuthzException::class);
     });
 
     it('reports what each user holds, at the scope they hold it', function () {

@@ -203,6 +203,7 @@ $iam->scope($scopeId)->roles()->all();
 $iam->scope($scopeId)->permissions()->all();          // the perm_… ids a custom role is built from
 $iam->scope($scopeId)->assign(['subjectType' => 'user', 'subjectId' => $userId, 'roleId' => $roleId]);
 $iam->scope($scopeId)->effectivePermissions('user', $userId);
+$iam->scope($scopeId)->roles()->get($roleId);         // reads from that scope; one that does not offer it is a 404
 $iam->scope($scopeId)->roles()->compose($roleId, $permissionId);
 $iam->assignments()->list('user', $userId);           // everything a subject holds, paged
 $iam->assignments()->delete($assignmentId);

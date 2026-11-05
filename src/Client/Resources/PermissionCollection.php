@@ -16,14 +16,23 @@ use B1Road\Laravel\DTO\AuthzPermission;
  */
 final class PermissionCollection extends Paginates
 {
-    public function __construct(HttpTransportInterface $http, private readonly string $path)
-    {
+    /** @param  array<string,scalar>  $query  Sent on every page. */
+    public function __construct(
+        HttpTransportInterface $http,
+        private readonly string $path,
+        private readonly array $query = [],
+    ) {
         parent::__construct($http);
     }
 
     protected function listPath(): string
     {
         return $this->path;
+    }
+
+    protected function listQuery(): array
+    {
+        return $this->query;
     }
 
     protected function mapRow(array $row): AuthzPermission

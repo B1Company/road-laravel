@@ -151,7 +151,7 @@ final class InMemoryBackend
         }
 
         // ── Control plane: scopes, permissions, roles, assignments ─────────
-        $control = $this->handleControlPlane($method, $path, $body ?? [], $query ?? []);
+        $control = $this->handleControlPlane($method, $path, $body ?? [], $query ?? [], $userId);
         if ($control !== null) {
             return $control;
         }
@@ -591,7 +591,7 @@ final class InMemoryBackend
      * @param  array<string,scalar|null>  $query
      * @return array{status:int, body:array<string,mixed>}|null
      */
-    private function handleControlPlane(string $method, string $path, array $body, array $query): ?array
+    private function handleControlPlane(string $method, string $path, array $body, array $query, ?string $userId): ?array
     {
         if ($method === 'GET' && $path === '/authz/scopes/lookup') {
             return ['status' => 200, 'body' => ['data' => $this->synthScope('scope_lookup', [
@@ -642,19 +642,26 @@ final class InMemoryBackend
         }
 
         if (preg_match('#^/authz/roles/([^/]+)/permissions(?:/([^/]+))?$#', $path, $m) === 1) {
+            if ($method === 'GET') {
+                $role = $this->readRole($m[1], $query, $userId, $path);
+
+                return $this->paginate($this->permissionRows($role['codes'], $role['ownerScopeId']));
+            }
+
             $role = $this->findRole($m[1]);
             if ($role === null) {
-                throw new RoadNotFoundException(sprintf('Role %s not in scenario.', $m[1]));
-            }
-            if ($method === 'GET') {
-                return $this->paginate($this->permissionRows($role['codes'], $role['scopeId']));
+                throw $this->apiError(404, $path, sprintf("Role '%s' was not found.", $m[1]), 'ROLE_NOT_FOUND');
             }
 
             return ['status' => 200, 'body' => ['data' => $role['wire']]];
         }
 
         if (preg_match('#^/authz/roles/([^/]+)$#', $path, $m) === 1) {
-            return $this->handleRole($method, $m[1], $body);
+            if ($method === 'GET') {
+                return ['status' => 200, 'body' => ['data' => $this->readRole($m[1], $query, $userId, $path)['wire']]];
+            }
+
+            return $this->handleRole($method, $m[1], $body, $path);
         }
 
         if ($method === 'GET' && preg_match('#^/authz/subjects/([^/]+)/([^/]+)/permissions$#', $path, $m) === 1) {
@@ -684,23 +691,45 @@ final class InMemoryBackend
     }
 
     /**
+     * `GET /authz/roles/:id`, and its permissions. With no `scopeId` the reader
+     * needs `read:Role` at the owner, which is above every scope in a scenario,
+     * so it is a 403. With one, `read:Role` there, then a 404 unless that scope
+     * offers the role.
+     *
+     * @param  array<string,scalar|null>  $query
+     * @return array{wire:array<string,mixed>, codes:list<string>, ownerScopeId:string, offeredAt:string}
+     */
+    private function readRole(string $roleId, array $query, ?string $userId, string $path): array
+    {
+        $notFound = fn () => $this->apiError(404, $path, sprintf("Role '%s' was not found.", $roleId), 'ROLE_NOT_FOUND');
+        if ($this->findRole($roleId) === null) {
+            throw $notFound();
+        }
+
+        $scopeId = (string) ($query['scopeId'] ?? '');
+        $decision = $scopeId === '' ? null : $this->decide((string) $userId, $this->locateScope($scopeId), 'read:Role', true);
+        if ($decision === null || ! $decision['allowed']) {
+            throw $this->apiError(403, $path, 'Permission denied');
+        }
+
+        return $this->findRole($roleId, $scopeId) ?? throw $notFound();
+    }
+
+    /**
      * @param  array<string,mixed>  $body
      * @return array{status:int, body:array<string,mixed>}
      */
-    private function handleRole(string $method, string $roleId, array $body): array
+    private function handleRole(string $method, string $roleId, array $body, string $path): array
     {
         $role = $this->findRole($roleId);
         if ($role === null) {
-            throw new RoadNotFoundException(sprintf('Role %s not in scenario.', $roleId));
+            throw $this->apiError(404, $path, sprintf("Role '%s' was not found.", $roleId), 'ROLE_NOT_FOUND');
         }
         if ($method === 'DELETE') {
             return ['status' => 200, 'body' => ['data' => ['assignmentsRevoked' => $role['wire']['assignmentCount']]]];
         }
-        if ($method === 'PATCH') {
-            return ['status' => 200, 'body' => ['data' => array_merge($role['wire'], $body)]];
-        }
 
-        return ['status' => 200, 'body' => ['data' => $role['wire']]];
+        return ['status' => 200, 'body' => ['data' => array_merge($role['wire'], $body)]];
     }
 
     /**
@@ -719,22 +748,24 @@ final class InMemoryBackend
     }
 
     /**
-     * Every role the scenario declares, at a BU or a subscription.
+     * Every role the scenario declares, with the scope that offers it. As on
+     * the API, the owner sits above that scope: Road owns what a BU offers, and
+     * a platform's management scope owns what a subscription offers.
      *
-     * @return list<array{wire:array<string,mixed>, codes:list<string>, scopeId:string}>
+     * @return list<array{wire:array<string,mixed>, codes:list<string>, ownerScopeId:string, offeredAt:string}>
      */
     private function allRoles(): array
     {
         $roles = [];
         foreach ($this->scenario->rolesByBu as $buId => $byName) {
             foreach ($byName as $name => $codes) {
-                $roles[] = $this->declaredRole($name, $codes, (string) $this->scenario->businessUnits[$buId]['iamScopeId']);
+                $roles[] = $this->declaredRole($name, $codes, 'scope_road', (string) $this->scenario->businessUnits[$buId]['iamScopeId']);
             }
         }
         foreach ($this->scenario->subscriptions as $byPlatform) {
-            foreach ($byPlatform as $sub) {
+            foreach ($byPlatform as $platformId => $sub) {
                 foreach ($sub['roles'] as $name => $codes) {
-                    $roles[] = $this->declaredRole($name, $codes, $sub['scopeId']);
+                    $roles[] = $this->declaredRole($name, $codes, 'scope_mgmt_'.$platformId, $sub['scopeId']);
                 }
             }
         }
@@ -744,27 +775,32 @@ final class InMemoryBackend
 
     /**
      * @param  list<string>  $codes
-     * @return array{wire:array<string,mixed>, codes:list<string>, scopeId:string}
+     * @return array{wire:array<string,mixed>, codes:list<string>, ownerScopeId:string, offeredAt:string}
      */
-    private function declaredRole(string $name, array $codes, string $scopeId): array
+    private function declaredRole(string $name, array $codes, string $ownerScopeId, string $offeredAt): array
     {
         return [
             'wire' => $this->makeRole([
                 'name' => $name,
                 'grantsAll' => in_array(Permission::WILDCARD, $codes, true),
                 'permissionCount' => count($codes),
-                'scopeId' => $scopeId,
+                'scopeId' => $ownerScopeId,
             ], 'role_'.$name),
             'codes' => $codes,
-            'scopeId' => $scopeId,
+            'ownerScopeId' => $ownerScopeId,
+            'offeredAt' => $offeredAt,
         ];
     }
 
-    /** @return array{wire:array<string,mixed>, codes:list<string>, scopeId:string}|null */
-    private function findRole(string $roleId): ?array
+    /**
+     * A role by id, and when `$offeredAt` is given, only as that scope offers it.
+     *
+     * @return array{wire:array<string,mixed>, codes:list<string>, ownerScopeId:string, offeredAt:string}|null
+     */
+    private function findRole(string $roleId, ?string $offeredAt = null): ?array
     {
         foreach ($this->allRoles() as $role) {
-            if ($role['wire']['id'] === $roleId) {
+            if ($role['wire']['id'] === $roleId && ($offeredAt === null || $role['offeredAt'] === $offeredAt)) {
                 return $role;
             }
         }
@@ -777,7 +813,7 @@ final class InMemoryBackend
     {
         $roles = [];
         foreach ($this->allRoles() as $role) {
-            if ($role['scopeId'] === $scopeId) {
+            if ($role['offeredAt'] === $scopeId) {
                 $roles[] = $role['wire'];
             }
         }
@@ -794,7 +830,7 @@ final class InMemoryBackend
     {
         $codes = [];
         foreach ($this->allRoles() as $role) {
-            if ($role['scopeId'] === $scopeId) {
+            if ($role['offeredAt'] === $scopeId) {
                 $codes = array_merge($codes, $role['codes']);
             }
         }

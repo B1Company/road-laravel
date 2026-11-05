@@ -249,21 +249,61 @@ function assignmentWire(string $id): array
     return ['id' => $id, 'subjectType' => 'user', 'subjectId' => 'u_1', 'roleId' => 'role_1', 'roleName' => 'Owner', 'scopeId' => 'scope_1', 'grantedBy' => 'u_0', 'grantedAt' => '2024-01-01T00:00:00Z', 'expiresAt' => null];
 }
 
-it('addresses one role by its own id, with no scope lookup', function () {
+it('reads a role from the collection\'s scope, and writes it with no scope', function () {
     Http::fake([
-        'api.road.test/api/alpha/authz/roles/role_9' => Http::sequence()
+        'api.road.test/api/alpha/authz/roles/role_9*' => Http::sequence()
             ->push(['data' => apiRoleWire('role_9', 'Editor')])
             ->push(['data' => apiRoleWire('role_9', 'Renamed')])
             ->push(['data' => ['assignmentsRevoked' => 4]]),
     ]);
     Http::preventStrayRequests();
 
-    $roles = seedRoadClient()->businessUnits('bu_1')->roles();
+    $roles = seedRoadClient()->iam()->scope('scope_1')->roles();
 
     expect($roles->get('role_9')->name)->toBe('Editor');
     expect($roles->update('role_9', ['name' => 'Renamed'])->name)->toBe('Renamed');
     expect($roles->delete('role_9'))->toBe(4);
-    Http::assertSentCount(3);
+
+    $urls = Http::recorded()->map(fn (array $pair) => $pair[0]->method().' '.$pair[0]->url())->values()->all();
+    expect($urls)->toBe([
+        'GET https://api.road.test/api/alpha/authz/roles/role_9?scopeId=scope_1',
+        'PATCH https://api.road.test/api/alpha/authz/roles/role_9',
+        'DELETE https://api.road.test/api/alpha/authz/roles/role_9',
+    ]);
+});
+
+it('reads a role through a BU with the BU\'s scope, resolved once', function () {
+    $permission = ['id' => 'perm_1', 'code' => 'read:Member', 'name' => 'Read', 'description' => null, 'category' => null, 'audience' => 'customer', 'scopeId' => 'scope_road', 'createdAt' => '', 'updatedAt' => ''];
+    Http::fake([
+        'api.road.test/api/alpha/organization/business-units/bu_1' => Http::response(['data' => buWire('bu_1', 'scope_1')]),
+        'api.road.test/api/alpha/authz/roles/role_9/permissions*' => Http::response(['data' => [$permission], 'pagination' => ['cursor' => null, 'hasMore' => false, 'totalCount' => 1]]),
+        'api.road.test/api/alpha/authz/roles/role_9*' => Http::response(['data' => apiRoleWire('role_9', 'Editor')]),
+    ]);
+    Http::preventStrayRequests();
+
+    $roles = seedRoadClient()->businessUnits('bu_1')->roles();
+    $roles->get('role_9');
+    $roles->permissions('role_9')->all();
+
+    $urls = Http::recorded()->map(fn (array $pair) => $pair[0]->url())->values()->all();
+    expect($urls)->toBe([
+        'https://api.road.test/api/alpha/organization/business-units/bu_1',
+        'https://api.road.test/api/alpha/authz/roles/role_9?scopeId=scope_1',
+        'https://api.road.test/api/alpha/authz/roles/role_9/permissions?scopeId=scope_1',
+    ]);
+});
+
+it('sends the scope on every page of a role\'s permissions', function () {
+    $row = fn (string $id) => ['id' => $id, 'code' => 'read:X', 'name' => 'X', 'description' => null, 'category' => null, 'audience' => 'customer', 'scopeId' => 'scope_m', 'createdAt' => '', 'updatedAt' => ''];
+    Http::fake(['api.road.test/api/alpha/authz/roles/role_9/permissions*' => Http::sequence()
+        ->push(['data' => [$row('perm_1')], 'pagination' => ['cursor' => 'c2', 'hasMore' => true, 'totalCount' => 2]])
+        ->push(['data' => [$row('perm_2')], 'pagination' => ['cursor' => null, 'hasMore' => false, 'totalCount' => 2]])]);
+    Http::preventStrayRequests();
+
+    seedRoadClient()->iam()->scope('scope_1')->roles()->permissions('role_9')->all();
+
+    $queries = Http::recorded()->map(fn (array $pair) => $pair[0]->data())->values()->all();
+    expect($queries)->toBe([['scopeId' => 'scope_1'], ['scopeId' => 'scope_1', 'cursor' => 'c2']]);
 });
 
 it('reads and edits what a role composes', function () {

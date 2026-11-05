@@ -15,8 +15,10 @@ use B1Road\Laravel\DTO\Role;
  *   Road::client()->iam()->scope($scopeId)->roles() // direct
  *
  * When constructed for a BU, the scope id is resolved from the BU detail once
- * and memoised. A single role is addressed by its own id (`role_…`), so
- * `get()`, `update()` and `delete()` need no scope.
+ * and memoised. A single role is addressed by its own id (`role_…`). Reading
+ * one sends this collection's scope too: a built-in role is owned above any
+ * scope a customer can reach, so the API only answers from a scope that offers
+ * it, and a scope that does not is a 404. Writes need no scope.
  *
  * @extends Paginates<Role>
  */
@@ -44,7 +46,9 @@ final class RoleCollection extends Paginates
 
     public function get(string $roleId): Role
     {
-        return Role::from($this->unwrap($this->http->request('GET', $this->rolePath($roleId))));
+        return Role::from($this->unwrap(
+            $this->http->request('GET', $this->rolePath($roleId), null, ['scopeId' => $this->scopeId()]),
+        ));
     }
 
     /**
@@ -75,7 +79,7 @@ final class RoleCollection extends Paginates
     /** What a role composes. */
     public function permissions(string $roleId): PermissionCollection
     {
-        return new PermissionCollection($this->http, $this->rolePath($roleId).'/permissions');
+        return new PermissionCollection($this->http, $this->rolePath($roleId).'/permissions', ['scopeId' => $this->scopeId()]);
     }
 
     /** Add one permission (`perm_…`) to a role. */
