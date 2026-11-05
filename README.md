@@ -170,7 +170,7 @@ foreach (Road::client()->businessUnits($buId)->members() as $member) { /* … */
 Road::client()->businessUnits($buId)->members()->suspend($memberId);
 Road::client()->businessUnits($buId)->members()->assignRole($memberId, $roleId); // BU or platform role
 Road::client()->businessUnits($buId)->members()->revokeRole($memberId, $roleId);
-Road::client()->businessUnits($buId)->roles()->create(['name' => 'Editor', 'permissions' => ['read:Member']]);
+Road::client()->businessUnits($buId)->roles()->create(['name' => 'Editor', 'permissionIds' => [$permissionId]]);
 Road::client()->businessUnits($buId)->invitations()->create([
     'email' => 'x@b1.app',
     'roleId' => $roleId,
@@ -186,7 +186,6 @@ foreach (Road::client()->me()->memberships() as $m) { // ...or ->businessUnits()
 $roles = Road::client()->me()->platformRoles($platformPublicId, $buId);
 // …or resolve one subscription directly by the platform's public id
 $sub = Road::client()->businessUnits($buId)->subscriptions('plat_payment_gw');
-Road::can('read', 'Invoice')->in($sub->scopeId); // check a platform-scoped permission
 
 // The signed-in user's Eduzz products — Road calls Eduzz with the user's
 // server-held token; iteration auto-paginates.
@@ -196,10 +195,17 @@ foreach (Road::client()->me()->eduzzProducts() as $product) {
 // A 403 carrying EDUZZ_REAUTH_REQUIRED means the user must reconnect Eduzz;
 // the code rides in the RoadAuthzException message + payload.
 
-// IAM control plane
-Road::client()->iam()->authorize([...]);
-Road::client()->iam()->scope($scopeId)->roles()->all();
-Road::client()->iam()->assignments()->create([...]);
+// Control plane (`/authz/*`). Ids are public: `role_…`, `perm_…`, `asg_…`
+$iam = Road::client()->iam();
+$iam->check(['businessUnitId' => $buId, 'codes' => ['read:Member']]);
+$iam->explain($scopeId, 'read:Member');               // the decision, with what it was made from
+$iam->scope($scopeId)->roles()->all();
+$iam->scope($scopeId)->permissions()->all();          // the perm_… ids a custom role is built from
+$iam->scope($scopeId)->assign(['subjectType' => 'user', 'subjectId' => $userId, 'roleId' => $roleId]);
+$iam->scope($scopeId)->effectivePermissions('user', $userId);
+$iam->scope($scopeId)->roles()->compose($roleId, $permissionId);
+$iam->assignments()->list('user', $userId);           // everything a subject holds, paged
+$iam->assignments()->delete($assignmentId);
 ```
 
 Listings are **auto-paginating iterators** — `foreach` walks every page,
@@ -258,7 +264,7 @@ if (! Road::can(Action::Read, Subject::Member)->in($buId)->check()) {
 // Throws on deny with a structured DecisionTrace
 Road::assert(Road::can(Action::Update, Subject::Role)->in($buId));
 
-// Single round-trip for multiple checks
+// One round-trip for the codes of one catalog
 [$canRead, $canUpdate, $canDelete] = Road::canMany([
     Road::can(Action::Read,   Subject::Member),
     Road::can(Action::Update, Subject::Member),
@@ -267,8 +273,42 @@ Road::assert(Road::can(Action::Update, Subject::Role)->in($buId));
 
 // Inspect the decision (the "why" — same shape every Road SDK surfaces)
 $trace = Road::can(Action::Read, Subject::Member)->in($buId)->trace();
-// $trace->verdict, $trace->grants, $trace->reason, ...
+// $trace->verdict, $trace->grants, $trace->reason, $trace->evaluatedScopes, ...
 ```
+
+### Road's codes and your platform's
+
+Every scope has one catalog, and the code decides which one answers:
+
+```php
+Road::can(Action::Read, Subject::Member)->in($buId)->check(); // Road's code, checked at the business unit
+Road::can('read', 'Invoice')->in($buId)->check();             // your code, checked at the unit's subscription
+```
+
+A subject in the `Subject` enum is Road's, whether you pass the enum or the
+string, so the middleware and Gate forms follow the same rule. Any other subject
+is your platform's, which needs `ROAD_PLATFORM_ID`. Without it the check throws
+before any request. A business unit with no subscription to your platform is a
+`RoadNotFoundException`, not a denial.
+
+Two overrides, for when the rule is not what you mean:
+
+```php
+// Your platform declares a code that reads like Road's
+Road::can(Action::Manage, Subject::Role)->forPlatform()->in($buId)->check();
+
+// You already hold a scope id: its catalog answers
+Road::can('read', 'Invoice')->inScope($scopeId)->check();
+```
+
+`allowed_*` and `denied_*` reach you in `result()->reason`. `denied_unknown_code`
+means the catalog does not declare the code, which is usually a typo or the wrong
+catalog.
+
+`Road::client()->me()->permissions()` gives the caller's codes for hiding a
+button: `byBusinessUnit` for Road's, `byScope` for each subscription too, with
+`*` for a role that holds everything. Enforce with `Road::can()`, never with this
+list: `*` also reads "yes" for a code the catalog does not declare.
 
 ### Laravel's Gate (opt-in)
 
@@ -380,6 +420,29 @@ test instance routed through an in-memory backend. The returned
 `RoadFakeAssertions` object is the only supported assertions surface —
 `assertCalled`, `assertNothingCalled`, `assertCallCount`, and
 `invitationToken`.
+
+**Your platform's permissions.** A BU role answers for Road's codes. Declare your
+own catalog with `withSubscription()`, which is what `Road::can('read', 'Invoice')`
+is checked against:
+
+```php
+config(['road.platform_id' => 'plat_acme']);
+
+Road::fake(
+    RoadScenario::make()
+        ->withUser('u_1')
+        ->withBusinessUnit('bu_1')
+        ->withMember('bu_1', 'u_1')
+        ->withSubscription('bu_1', 'plat_acme',
+            roles: ['Billing' => ['manage:Invoice']],
+            members: ['u_1' => ['Billing']],
+        )
+);
+```
+
+The fake answers with the engine's reasons and catalogs: a Road code checked at a
+subscription is `denied_unknown_code`, and a role of one catalog never answers for
+a code of another. A BU role with `*` passes at its subscriptions, as an Owner does.
 
 **Invitation links.** Accepting an invitation takes the single-use token from
 its link, in the fake as on the API. No fake response carries the token, so
@@ -697,6 +760,10 @@ Event::listen(MemberSuspended::class, function (MemberSuspended $event) {
 });
 ```
 
+If you cache authorization answers, listen to `AuthzAssignmentCreated`,
+`AuthzAssignmentRevoked`, `AuthzRoleChanged` and `AuthzCatalogChanged`: each says
+something changed in your platform's catalog.
+
 Every delivery also fires a catch-all `RoadWebhookReceived`. The endpoint
 fails closed — `503` when no secret is configured, `401` on a bad signature —
 and returns `200` for unknown event types (forward-compatible).
@@ -723,7 +790,7 @@ The full config shape is published to `config/road.php`:
 | `road.auth_server.*` | OIDC client credentials + scopes |
 | `road.proxy.enabled` | Auto-mount `/road-api/{any?}` (default true) |
 | `road.proxy.prefix` | Proxy URL prefix (default `road-api`) |
-| `road.proxy.allow` | Glob allowlist of paths the proxy will forward |
+| `road.proxy.allow` | Glob allowlist of paths the proxy will forward. A published `config/road.php` keeps its own list, so it must name `authz/*` |
 | `road.api.retry.*` | Transient-failure retries: `enabled`, `max_attempts` (3), `base_delay_ms` (250) |
 | `road.token_store` | Where the BFF caches Auth Server tokens (`session`) |
 | `road.inertia.enabled` | Inject `props.road` into Inertia shared props (default true) |
