@@ -23,6 +23,7 @@ final class AuthzAssignmentWebhookData extends Data
         public string $subjectId,
         /** The role (`role_…`). */
         public string $roleId,
+        /** The scope (`scope_…`). */
         public string $scopeId,
     ) {}
 }

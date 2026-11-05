@@ -51,7 +51,7 @@ final class BusinessUnitScope
      * Resolve this BU's subscription to a platform by the platform's public id.
      *
      *   $sub = Road::client()->businessUnits($buId)->subscriptions('plat_payment_gw');
-     *   $sub->scopeId; // the IAM scope id for permission checks on that platform
+     *   $sub->scopeId; // the scope's public id, for permission checks on that platform
      */
     public function subscriptions(string $platformPublicId): PlatformSubscriptionResolution
     {

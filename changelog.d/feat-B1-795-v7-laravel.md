@@ -1,6 +1,6 @@
 ### Changed
 
-- **Breaking: the SDK now speaks the `authz/*` API** (plan 75, B1-795). The old `/iam/authorization/*` routes answer `410`, so upgrade before they reach your environment. Ids are public: `role_…`, `perm_…`, `asg_…`. Scope ids stay UUIDs.
+- **Breaking: the SDK now speaks the `authz/*` API** (plan 75, B1-795). The old `/iam/authorization/*` routes answer `410`, so upgrade before they reach your environment. Ids are public: `role_…`, `perm_…`, `asg_…`, `scope_…`.
 - **Breaking: if you published `config/road.php`, edit `road.proxy.allow` by hand** (B1-795). Replace `iam/authorization/*` with `authz/*`. Your copy overrides the package default, and until it changes the proxy answers `404` for every `authz/*` path.
 - **Breaking: `Road::can()` and `Road::canMany()` choose the catalog from the code** (plan 75, N10). A subject in the `Subject` enum is Road's and is checked at the business unit. Any other subject is your platform's and is checked at the unit's subscription to `ROAD_PLATFORM_ID`, which is now required for it: without it the check throws before any request. A business unit with no such subscription throws `RoadNotFoundException`. Use `forPlatform()` for your own code that shares a name with Road's, and `inScope($scopeId)` to name a scope.
 - **Breaking: a check by business unit makes one request, and `in()` takes only a business unit id** (B1-795). There is no lookup first. To pass a scope id, use `inScope()`.

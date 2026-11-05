@@ -115,9 +115,9 @@ it('inScope() names the scope and nothing else', function () {
     Http::fake(['api.road.test/api/alpha/authz/checks' => Http::response(checksAnswer(['read:Invoice']))]);
     liveCaller();
 
-    Road::can('read', 'Invoice')->inScope('11111111-1111-1111-1111-111111111111')->check();
+    Road::can('read', 'Invoice')->inScope('scope_V1StGXR8_Z5jdHi6B-myT')->check();
 
-    expect(checkBodies())->toBe([['codes' => ['read:Invoice'], 'scopeId' => '11111111-1111-1111-1111-111111111111']]);
+    expect(checkBodies())->toBe([['codes' => ['read:Invoice'], 'scopeId' => 'scope_V1StGXR8_Z5jdHi6B-myT']]);
 });
 
 it('refuses a platform code before any request when no platform is known', function () {

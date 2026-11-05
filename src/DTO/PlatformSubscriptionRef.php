@@ -23,7 +23,7 @@ final class PlatformSubscriptionRef extends Data
         public string $platformId,
         /** Human-readable platform identifier, e.g. "payment-gateway". */
         public string $slug,
-        /** IAM scope id for this BU's subscription to the platform. */
+        /** The public id of this BU's subscription scope (`scope_…`). */
         public string $scopeId,
         #[DataCollectionOf(RoleRef::class)]
         public DataCollection $roles,
