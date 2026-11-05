@@ -212,9 +212,9 @@ it('lists platform roles by resolving the subscription then its scope roles (par
             'data' => ['subscriptionId' => 'sub_1', 'platformId' => 'plat_gw', 'slug' => 'payment-gateway', 'scopeId' => 'scope_plat_1'],
         ], 200),
         // Hop 2: list that scope's roles.
-        'api.road.test/api/alpha/iam/authorization/scopes/scope_plat_1/roles*' => Http::response([
+        'api.road.test/api/alpha/authz/scopes/scope_plat_1/roles*' => Http::response([
             'data' => [
-                ['id' => 'role_admin', 'name' => 'Platform Admin', 'description' => null, 'permissions' => ['manage:Invoice'], 'isSystem' => false, 'assignmentCount' => 1, 'createdAt' => '2024-01-01T00:00:00Z'],
+                ['id' => 'role_admin', 'name' => 'Platform Admin', 'description' => null, 'audience' => 'customer', 'grantsAll' => false, 'custom' => false, 'scopeId' => 'scope_mgmt', 'permissionCount' => 1, 'assignmentCount' => 1, 'createdAt' => '2024-01-01T00:00:00Z', 'updatedAt' => '2024-01-01T00:00:00Z'],
             ],
             'pagination' => ['cursor' => null, 'hasMore' => false, 'totalCount' => 1],
         ], 200),

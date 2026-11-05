@@ -48,10 +48,10 @@ it('drives the whole client surface through the in-memory fake', function () {
 
     // Roles (scope-keyed)
     expect($client->iam()->scope('scope_1')->roles()->all())->not->toBeEmpty();
-    expect($client->iam()->scope('scope_1')->roles()->get('r_Owner'))->toBeInstanceOf(Role::class);
-    $client->iam()->scope('scope_1')->roles()->create(['name' => 'Editor', 'permissions' => ['read:Member']]);
-    $client->iam()->scope('scope_1')->roles()->update('r_Owner', ['name' => 'Owner2']);
-    $client->iam()->scope('scope_1')->roles()->delete('r_Owner');
+    expect($client->iam()->scope('scope_1')->roles()->get('role_Owner'))->toBeInstanceOf(Role::class);
+    $client->iam()->scope('scope_1')->roles()->create(['name' => 'Editor', 'permissionIds' => ['perm_read_Member']]);
+    $client->iam()->scope('scope_1')->roles()->update('role_Owner', ['name' => 'Owner2']);
+    $client->iam()->scope('scope_1')->roles()->delete('role_Owner');
 
     // Invitations
     expect($scope->invitations()->all())->toHaveCount(1);
@@ -62,12 +62,11 @@ it('drives the whole client surface through the in-memory fake', function () {
     expect($client->invitations()->reject('inv_bu_1_0')->status)->toBe('rejected');
 
     // IAM scopes + assignments + effective permissions
-    expect($client->iam()->scopes()->create(['type' => 'business_unit']))->toBeInstanceOf(Scope::class);
     expect($client->iam()->scopes()->get('scope_1'))->toBeInstanceOf(Scope::class);
     expect($client->iam()->scopes()->lookup('business_unit', 'ext-1'))->toBeInstanceOf(Scope::class);
-    expect($client->iam()->assignments()->create(['subjectType' => 'user', 'subjectId' => 'u', 'roleId' => 'r_1', 'scopeId' => 'scope_1']))->toBeInstanceOf(Assignment::class);
-    expect($client->iam()->assignments()->list('user', 'u'))->toBeArray();
-    $client->iam()->assignments()->delete('as_1');
+    expect($client->iam()->scope('scope_1')->assign(['subjectType' => 'user', 'subjectId' => 'u', 'roleId' => 'role_Owner']))->toBeInstanceOf(Assignment::class);
+    expect($client->iam()->assignments()->list('user', 'u')->all())->toHaveCount(1);
+    $client->iam()->assignments()->delete('asg_1');
     expect($client->iam()->scope('scope_1')->effectivePermissions('user', 'u'))->toBeInstanceOf(EffectivePermissionsResult::class);
 
     // Authorize (the user holds '*' on bu_1)
@@ -77,7 +76,7 @@ it('drives the whole client surface through the in-memory fake', function () {
     expect($checked[1]->allowed)->toBeFalse();
     expect($checked[1]->reason)->toBe('denied_unknown_code');
 
-    $fake->assertCalled('POST', '/iam/authorization/scopes/scope_1/roles');
+    $fake->assertCalled('POST', '/authz/scopes/scope_1/roles');
     $fake->assertCalled('POST', '/organization/business-units/bu_1/members/mem_bu_1_u/roles');
     $fake->assertCalled('DELETE', '/organization/business-units/bu_1/members/mem_bu_1_u/roles/r_Editor');
     $fake->assertCalled('DELETE', '/organization/business-units/bu_1/members/mem_bu_1_u');

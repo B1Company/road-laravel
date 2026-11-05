@@ -12,6 +12,7 @@ use B1Road\Laravel\DTO\CheckExplanation;
 use B1Road\Laravel\Exceptions\RoadApiException;
 use B1Road\Laravel\Exceptions\RoadAuthzException;
 use B1Road\Laravel\Exceptions\RoadNotFoundException;
+use B1Road\Laravel\Exceptions\RoadValidationException;
 use B1Road\Laravel\Facades\Road;
 use B1Road\Laravel\Testing\ActsAsRoadUser;
 use B1Road\Laravel\Testing\RoadScenario;
@@ -296,5 +297,49 @@ describe('the fake answers like the engine', function () {
         ]);
 
         expect($checks->results[0]->reason)->toBe('allowed_role');
+    });
+});
+
+describe('the fake serves the control plane like the API', function () {
+    it('refuses a field the API no longer takes', function () {
+        Road::fake(platformScenario());
+        $this->actingAsRoadUser('u_owner');
+        $iam = app(RoadClient::class)->iam();
+
+        expect(fn () => $iam->scope('scope_bu_1')->roles()->create(['name' => 'E', 'permissions' => ['read:Member']]))
+            ->toThrow(RoadValidationException::class, 'permissions');
+        expect(fn () => $iam->scope('scope_bu_1')->assign(['subjectType' => 'user', 'subjectId' => 'u', 'roleId' => 'role_1', 'scopeId' => 'scope_bu_1']))
+            ->toThrow(RoadValidationException::class, 'scopeId');
+    });
+
+    it('lists a platform role at its subscription scope', function () {
+        Road::fake(platformScenario());
+        $this->actingAsRoadUser('u_owner');
+
+        $roles = app(RoadClient::class)->me()->platformRoles('plat_acme', 'bu_1');
+
+        expect(array_map(fn ($r) => $r->id, $roles))->toBe(['role_InvoiceAdmin', 'role_RoleEditor']);
+        expect($roles[0]->scopeId)->toBe('sub_plat_acme_bu_1');
+    });
+
+    it('reports what each user holds, at the scope they hold it', function () {
+        Road::fake(platformScenario());
+        $this->actingAsRoadUser('u_owner');
+        $iam = app(RoadClient::class)->iam();
+
+        $held = array_map(fn ($a) => [$a->roleName, $a->scopeId], $iam->assignments()->list('user', 'u_admin')->all());
+
+        expect($held)->toBe([['Admin', 'scope_bu_1'], ['InvoiceAdmin', 'sub_plat_acme_bu_1']]);
+        expect(array_map(fn ($a) => $a->subjectId, $iam->scope('sub_plat_acme_bu_1')->assignments()->all()))->toBe(['u_admin', 'u_member']);
+    });
+
+    it('answers effective permissions and a role composition from the scenario', function () {
+        Road::fake(platformScenario());
+        $this->actingAsRoadUser('u_owner');
+        $iam = app(RoadClient::class)->iam();
+
+        expect($iam->scope('scope_bu_1')->effectivePermissions('user', 'u_owner')->all)->toBeTrue();
+        expect($iam->scope('sub_plat_acme_bu_1')->effectivePermissions('user', 'u_member')->codes)->toContain('create:Role');
+        expect(array_map(fn ($p) => $p->code, $iam->scope('scope_bu_1')->roles()->permissions('role_Admin')->all()))->toBe(['manage:Member']);
     });
 });

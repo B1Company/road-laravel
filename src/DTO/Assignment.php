@@ -6,12 +6,7 @@ namespace B1Road\Laravel\DTO;
 
 use Spatie\LaravelData\Data;
 
-/**
- * A role assignment. Wire shape of `@b1-road/types/iam` `Assignment`. The
- * list endpoint enriches rows with `roleName` / `scopeType` /
- * `scopeExternalId`; those are nullable here since the create/get paths omit
- * them.
- */
+/** A role held at a scope, addressed by public id (`asg_…`). */
 final class Assignment extends Data
 {
     public function __construct(
@@ -19,12 +14,10 @@ final class Assignment extends Data
         public string $subjectType,
         public string $subjectId,
         public string $roleId,
+        public string $roleName,
         public string $scopeId,
         public string $grantedBy,
         public string $grantedAt,
         public ?string $expiresAt = null,
-        public ?string $roleName = null,
-        public ?string $scopeType = null,
-        public ?string $scopeExternalId = null,
     ) {}
 }

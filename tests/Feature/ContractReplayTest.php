@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use B1Road\Laravel\Client\Resources\RoleWire;
 use B1Road\Laravel\DTO\BridgeAuditEntry;
 use B1Road\Laravel\DTO\BusinessUnitDetail;
 use B1Road\Laravel\DTO\MyBusinessUnits;
@@ -56,9 +55,13 @@ it('decodes every recorded contract fixture through the matching DTO', function 
         })(),
         'roleList' => (function () use ($data, $fixture) {
             expect($data)->toBeArray();
-            $roles = array_map(fn (array $row) => RoleWire::toDomain($row), $data);
+            $roles = array_map(fn (array $row) => Role::from($row), $data);
             expect($roles[0])->toBeInstanceOf(Role::class);
             expect($roles[0]->name)->toBe($data[0]['name']);
+            expect($roles[0]->grantsAll)->toBe($data[0]['grantsAll']);
+            expect($roles[0]->audience)->toBe($data[0]['audience']);
+            expect($roles[0]->permissionCount)->toBe($data[0]['permissionCount']);
+            expect($roles[0]->updatedAt)->toBe($data[0]['updatedAt']);
             // The pagination envelope decodes too.
             $pagination = Pagination::fromWire($fixture['body']['pagination'] ?? null, count($roles));
             expect($pagination->hasMore)->toBeTrue();

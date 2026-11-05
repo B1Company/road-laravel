@@ -4,18 +4,10 @@ declare(strict_types=1);
 
 use B1Road\Laravel\DTO\PaginatedList;
 use B1Road\Laravel\DTO\Pagination;
-use B1Road\Laravel\DTO\ParentScopeRef;
 use B1Road\Laravel\DTO\PendingInvitation;
+use B1Road\Laravel\DTO\RoleRef;
 use B1Road\Laravel\Exceptions\RoadNetworkException;
 use B1Road\Laravel\Exceptions\RoadWebhookSignatureException;
-
-it('hydrates ParentScopeRef from the wire', function () {
-    $ref = ParentScopeRef::from(['id' => 's_parent', 'type' => 'business_unit', 'externalId' => 'ext-9']);
-
-    expect($ref->id)->toBe('s_parent');
-    expect($ref->type)->toBe('business_unit');
-    expect($ref->externalId)->toBe('ext-9');
-});
 
 it('synthesises a single-page Pagination when the wire omits it', function () {
     $pagination = Pagination::fromWire(null, 7);
@@ -54,13 +46,13 @@ it('hydrates a PendingInvitation with its nested business unit', function () {
 
 it('serialises a PaginatedList including its DTO rows', function () {
     $page = new PaginatedList(
-        [new ParentScopeRef('s1', 'business_unit', 'ext')],
+        [new RoleRef('role_1', 'Owner')],
         Pagination::fromWire(['cursor' => 'c2', 'hasMore' => true, 'totalCount' => 5], 1),
     );
 
     $array = $page->toArray();
 
-    expect($array['data'][0]['id'])->toBe('s1');
+    expect($array['data'][0]['id'])->toBe('role_1');
     expect($array['pagination']['cursor'])->toBe('c2');
     expect($array['pagination']['totalCount'])->toBe(5);
 });

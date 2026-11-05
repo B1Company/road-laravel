@@ -8,9 +8,9 @@ use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\DTO\Assignment;
 
 /**
- * Create / list / delete role assignments. Reached via
- * `Road::client()->iam()->assignments()`. Mirrors the `iam.assignments`
- * object in road-nestjs.
+ * Read and revoke role assignments by id or subject. Reached via
+ * `Road::client()->iam()->assignments()`. To assign, go through the scope:
+ * `iam()->scope($scopeId)->assign([...])`.
  */
 final class IamAssignments
 {
@@ -18,37 +18,24 @@ final class IamAssignments
 
     public function __construct(private readonly HttpTransportInterface $http) {}
 
-    /** @param  array<string,mixed>  $input */
-    public function create(array $input): Assignment
+    /** Everything a subject holds, at any scope. */
+    public function list(string $subjectType, string $subjectId): AssignmentCollection
     {
-        $body = $this->http->request('POST', '/iam/authorization/assignments', $input);
-
-        return Assignment::from($this->unwrap($body));
+        return new AssignmentCollection(
+            $this->http,
+            '/authz/subjects/'.rawurlencode($subjectType).'/'.rawurlencode($subjectId).'/assignments',
+        );
     }
 
-    /** @return list<Assignment> */
-    public function list(string $subjectType, string $subjectId, ?string $scopeId = null): array
+    public function get(string $assignmentId): Assignment
     {
-        $body = $this->http->request(
-            'GET',
-            '/iam/authorization/subjects/'.rawurlencode($subjectType).'/'.rawurlencode($subjectId).'/assignments',
-            null,
-            $scopeId !== null ? ['scopeId' => $scopeId] : [],
-        );
-
-        $rows = $this->unwrap($body);
-        $out = [];
-        foreach (array_values($rows) as $row) {
-            if (is_array($row)) {
-                $out[] = Assignment::from($row);
-            }
-        }
-
-        return $out;
+        return Assignment::from($this->unwrap(
+            $this->http->request('GET', '/authz/assignments/'.rawurlencode($assignmentId)),
+        ));
     }
 
     public function delete(string $assignmentId): void
     {
-        $this->http->request('DELETE', '/iam/authorization/assignments/'.rawurlencode($assignmentId));
+        $this->http->request('DELETE', '/authz/assignments/'.rawurlencode($assignmentId));
     }
 }

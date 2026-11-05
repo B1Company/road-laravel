@@ -7,14 +7,15 @@ namespace B1Road\Laravel\DTO;
 use Spatie\LaravelData\Data;
 
 /**
- * Effective permissions for a subject on a scope — already flattened to
- * `"action:Subject"` strings (`manage:X` expanded server-side). Wire shape of
- * `@b1-road/types/iam` `EffectivePermissionsResult`.
+ * What a subject may do at a scope. `codes` has `manage` expanded. `all` is a
+ * holder of every code there, and `codes` is then empty.
  */
 final class EffectivePermissionsResult extends Data
 {
-    /** @param  list<string>  $permissions */
+    /** @param  list<string>  $codes */
     public function __construct(
-        public array $permissions,
+        public string $scopeId,
+        public bool $all,
+        public array $codes,
     ) {}
 }

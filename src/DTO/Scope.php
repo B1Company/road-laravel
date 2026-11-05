@@ -6,20 +6,16 @@ namespace B1Road\Laravel\DTO;
 
 use Spatie\LaravelData\Data;
 
-/**
- * An IAM scope. Wire shape of `@b1-road/types/iam` `Scope`.
- */
+/** A scope, as `GET /authz/scopes/:id` returns it. Scopes keep their UUIDs. */
 final class Scope extends Data
 {
-    /** @param  array<string,mixed>  $metadata */
     public function __construct(
         public string $id,
         public string $type,
-        public ?string $externalId = null,
-        public ?string $parentScopeId = null,
-        public ?ParentScopeRef $parentScope = null,
-        public array $metadata = [],
-        public string $createdAt = '',
-        public ?string $updatedAt = null,
+        public ?string $externalId,
+        public ?string $parentScopeId,
+        /** The scope whose catalog decides a code here. */
+        public string $catalogScopeId,
+        public string $createdAt,
     ) {}
 }

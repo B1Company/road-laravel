@@ -25,6 +25,9 @@ final class InMemoryBackend
     /** What `manage:X` implies, as the engine expands it. */
     private const MANAGE_IMPLIES = ['create', 'read', 'update', 'delete'];
 
+    /** What `CreateAssignmentDto` takes. */
+    private const ASSIGNMENT_FIELDS = ['subjectType', 'subjectId', 'roleId', 'expiresAt'];
+
     /** @var list<array{method:string, path:string, body:?array<string,mixed>}> */
     public array $calls = [];
 
@@ -147,69 +150,10 @@ final class InMemoryBackend
             return $this->handleExplain($query ?? [], $userId);
         }
 
-        // ── IAM control plane: scopes, roles, assignments ──────────────────
-        if ($method === 'GET' && $path === '/iam/authorization/scopes/lookup') {
-            return ['status' => 200, 'body' => ['data' => $this->synthScope('scope_lookup', [
-                'type' => (string) ($query['type'] ?? 'business_unit'),
-                'externalId' => isset($query['externalId']) ? (string) $query['externalId'] : null,
-            ])]];
-        }
-
-        if ($method === 'POST' && $path === '/iam/authorization/scopes') {
-            return ['status' => 201, 'body' => ['data' => $this->synthScope('scope_new', [
-                'type' => (string) (($body['type'] ?? null) ?: 'business_unit'),
-                'externalId' => isset($body['externalId']) ? (string) $body['externalId'] : null,
-                'parentScopeId' => isset($body['parentScopeId']) ? (string) $body['parentScopeId'] : null,
-                'metadata' => is_array($body['metadata'] ?? null) ? $body['metadata'] : [],
-            ])]];
-        }
-
-        if ($method === 'GET' && preg_match('#^/iam/authorization/scopes/([^/]+)/roles$#', $path, $m) === 1) {
-            return $this->paginate($this->rolesForScope($m[1]));
-        }
-
-        if ($method === 'POST' && preg_match('#^/iam/authorization/scopes/([^/]+)/roles$#', $path) === 1) {
-            return ['status' => 201, 'body' => ['data' => $this->makeRole($body ?? [])]];
-        }
-
-        if (preg_match('#^/iam/authorization/scopes/([^/]+)/roles/([^/]+)$#', $path, $m) === 1) {
-            if ($method === 'DELETE') {
-                return ['status' => 200, 'body' => ['data' => []]];
-            }
-            if ($method === 'PATCH') {
-                return ['status' => 200, 'body' => ['data' => $this->makeRole(array_merge(['name' => $m[2]], $body ?? []), $m[2])]];
-            }
-            // GET single role
-            foreach ($this->rolesForScope($m[1]) as $role) {
-                if ($role['id'] === $m[2]) {
-                    return ['status' => 200, 'body' => ['data' => $role]];
-                }
-            }
-            throw new RoadNotFoundException(sprintf('Role %s not in scenario.', $m[2]));
-        }
-
-        if ($method === 'GET' && preg_match('#^/iam/authorization/scopes/([^/]+)$#', $path, $m) === 1) {
-            return ['status' => 200, 'body' => ['data' => $this->synthScope($m[1])]];
-        }
-
-        if ($method === 'GET' && preg_match('#^/iam/authorization/subjects/([^/]+)/([^/]+)/permissions$#', $path, $m) === 1) {
-            $scopeId = (string) ($query['scopeId'] ?? '');
-            $bu = $this->resolveBuFromScope($scopeId);
-            $perms = $bu !== null ? $this->scenario->effectivePermissions($m[2], (string) $bu['id']) : [];
-
-            return ['status' => 200, 'body' => ['data' => ['permissions' => $perms]]];
-        }
-
-        if ($method === 'GET' && preg_match('#^/iam/authorization/subjects/([^/]+)/([^/]+)/assignments$#', $path) === 1) {
-            return ['status' => 200, 'body' => ['data' => []]];
-        }
-
-        if ($method === 'POST' && $path === '/iam/authorization/assignments') {
-            return ['status' => 201, 'body' => ['data' => $this->makeAssignment($body ?? [])]];
-        }
-
-        if ($method === 'DELETE' && preg_match('#^/iam/authorization/assignments/([^/]+)$#', $path) === 1) {
-            return ['status' => 200, 'body' => ['data' => []]];
+        // ── Control plane: scopes, permissions, roles, assignments ─────────
+        $control = $this->handleControlPlane($method, $path, $body ?? [], $query ?? []);
+        if ($control !== null) {
+            return $control;
         }
 
         // ── Organization: members & invitations ────────────────────────────
@@ -267,7 +211,7 @@ final class InMemoryBackend
             $invitation = $this->makeInvitation(
                 $id,
                 (string) ($body['email'] ?? ''),
-                (string) ($body['roleId'] ?? 'r_member'),
+                (string) ($body['roleId'] ?? 'role_member'),
                 'pending',
             );
             $this->createdInvitations[$id] = $invitation;
@@ -637,23 +581,285 @@ final class InMemoryBackend
     }
 
     /**
-     * Roles defined on the BU behind a scope id (from `withRole`).
+     * `/authz/*` beyond checks. Read paths come from the scenario; writes
+     * acknowledge with a plausible echo. A body the API's DTOs would refuse is
+     * a 400 here too.
      *
-     * @return list<array<string,mixed>>
+     * @param  array<string,mixed>  $body
+     * @param  array<string,scalar|null>  $query
+     * @return array{status:int, body:array<string,mixed>}|null
      */
-    private function rolesForScope(string $scopeId): array
+    private function handleControlPlane(string $method, string $path, array $body, array $query): ?array
     {
-        $bu = $this->resolveBuFromScope($scopeId);
-        if ($bu === null) {
-            return [];
+        if ($method === 'GET' && $path === '/authz/scopes/lookup') {
+            return ['status' => 200, 'body' => ['data' => $this->synthScope('scope_lookup', [
+                'type' => (string) ($query['type'] ?? 'business_unit'),
+                'externalId' => isset($query['externalId']) ? (string) $query['externalId'] : null,
+            ])]];
         }
 
+        if ($method === 'GET' && preg_match('#^/authz/scopes/([^/]+)/roles$#', $path, $m) === 1) {
+            return $this->paginate($this->rolesForScope($m[1]));
+        }
+
+        if ($method === 'POST' && preg_match('#^/authz/scopes/([^/]+)/roles$#', $path, $m) === 1) {
+            $this->refuseFields($body, ['name', 'description', 'permissionIds', 'cloneFromRoleId'], $path);
+
+            return ['status' => 201, 'body' => ['data' => $this->makeRole($body + ['custom' => true, 'scopeId' => $m[1]])]];
+        }
+
+        if ($method === 'GET' && preg_match('#^/authz/scopes/([^/]+)/permissions$#', $path, $m) === 1) {
+            return $this->paginate($this->permissionsAt($m[1]));
+        }
+
+        if ($method === 'GET' && preg_match('#^/authz/scopes/([^/]+)/assignments$#', $path, $m) === 1) {
+            return $this->paginate(array_values(array_filter(
+                $this->allAssignments(),
+                static fn (array $a): bool => $a['scopeId'] === $m[1],
+            )));
+        }
+
+        if ($method === 'POST' && preg_match('#^/authz/scopes/([^/]+)/assignments$#', $path, $m) === 1) {
+            $this->refuseFields($body, self::ASSIGNMENT_FIELDS, $path);
+
+            return ['status' => 201, 'body' => ['data' => $this->makeAssignment($body + ['scopeId' => $m[1]])]];
+        }
+
+        if ($method === 'POST' && preg_match('#^/authz/scopes/([^/]+)/assignments/batch$#', $path) === 1) {
+            $rows = [];
+            foreach ((array) ($body['assignments'] ?? []) as $i => $row) {
+                $this->refuseFields((array) $row, self::ASSIGNMENT_FIELDS, $path);
+                $rows[] = ['id' => 'asg_new_'.$i, 'created' => true];
+            }
+
+            return ['status' => 201, 'body' => ['data' => $rows]];
+        }
+
+        if ($method === 'GET' && preg_match('#^/authz/scopes/([^/]+)$#', $path, $m) === 1) {
+            return ['status' => 200, 'body' => ['data' => $this->synthScope($m[1])]];
+        }
+
+        if (preg_match('#^/authz/roles/([^/]+)/permissions(?:/([^/]+))?$#', $path, $m) === 1) {
+            $role = $this->findRole($m[1]);
+            if ($role === null) {
+                throw new RoadNotFoundException(sprintf('Role %s not in scenario.', $m[1]));
+            }
+            if ($method === 'GET') {
+                return $this->paginate($this->permissionRows($role['codes'], $role['scopeId']));
+            }
+
+            return ['status' => 200, 'body' => ['data' => $role['wire']]];
+        }
+
+        if (preg_match('#^/authz/roles/([^/]+)$#', $path, $m) === 1) {
+            return $this->handleRole($method, $m[1], $body);
+        }
+
+        if ($method === 'GET' && preg_match('#^/authz/subjects/([^/]+)/([^/]+)/permissions$#', $path, $m) === 1) {
+            return ['status' => 200, 'body' => ['data' => $this->effective((string) ($query['scopeId'] ?? ''), $m[2])]];
+        }
+
+        if ($method === 'GET' && preg_match('#^/authz/subjects/([^/]+)/([^/]+)/assignments$#', $path, $m) === 1) {
+            return $this->paginate(array_values(array_filter(
+                $this->allAssignments(),
+                static fn (array $a): bool => $a['subjectType'] === $m[1] && $a['subjectId'] === $m[2],
+            )));
+        }
+
+        if (preg_match('#^/authz/assignments/([^/]+)$#', $path, $m) === 1) {
+            if ($method === 'DELETE') {
+                return ['status' => 200, 'body' => ['data' => ['id' => $m[1], 'revoked' => true]]];
+            }
+            foreach ($this->allAssignments() as $assignment) {
+                if ($assignment['id'] === $m[1]) {
+                    return ['status' => 200, 'body' => ['data' => $assignment]];
+                }
+            }
+            throw new RoadNotFoundException(sprintf('Assignment %s not in scenario.', $m[1]));
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string,mixed>  $body
+     * @return array{status:int, body:array<string,mixed>}
+     */
+    private function handleRole(string $method, string $roleId, array $body): array
+    {
+        $role = $this->findRole($roleId);
+        if ($role === null) {
+            throw new RoadNotFoundException(sprintf('Role %s not in scenario.', $roleId));
+        }
+        if ($method === 'DELETE') {
+            return ['status' => 200, 'body' => ['data' => ['assignmentsRevoked' => $role['wire']['assignmentCount']]]];
+        }
+        if ($method === 'PATCH') {
+            return ['status' => 200, 'body' => ['data' => array_merge($role['wire'], $body)]];
+        }
+
+        return ['status' => 200, 'body' => ['data' => $role['wire']]];
+    }
+
+    /**
+     * The API forbids a field its DTO does not declare, so a caller still
+     * sending an old field fails here too.
+     *
+     * @param  array<array-key,mixed>  $body
+     * @param  list<string>  $allowed
+     */
+    private function refuseFields(array $body, array $allowed, string $path): void
+    {
+        $extra = array_diff(array_map('strval', array_keys($body)), $allowed);
+        if ($extra !== []) {
+            throw $this->apiError(400, $path, sprintf('property %s should not exist', implode(', ', $extra)));
+        }
+    }
+
+    /**
+     * Every role the scenario declares, at a BU or a subscription.
+     *
+     * @return list<array{wire:array<string,mixed>, codes:list<string>, scopeId:string}>
+     */
+    private function allRoles(): array
+    {
         $roles = [];
-        foreach ($this->scenario->rolesByBu[(string) $bu['id']] ?? [] as $name => $permissions) {
-            $roles[] = $this->makeRole(['name' => $name, 'permissions' => array_values($permissions)], 'r_'.$name);
+        foreach ($this->scenario->rolesByBu as $buId => $byName) {
+            foreach ($byName as $name => $codes) {
+                $roles[] = $this->declaredRole($name, $codes, (string) $this->scenario->businessUnits[$buId]['iamScopeId']);
+            }
+        }
+        foreach ($this->scenario->subscriptions as $byPlatform) {
+            foreach ($byPlatform as $sub) {
+                foreach ($sub['roles'] as $name => $codes) {
+                    $roles[] = $this->declaredRole($name, $codes, $sub['scopeId']);
+                }
+            }
         }
 
         return $roles;
+    }
+
+    /**
+     * @param  list<string>  $codes
+     * @return array{wire:array<string,mixed>, codes:list<string>, scopeId:string}
+     */
+    private function declaredRole(string $name, array $codes, string $scopeId): array
+    {
+        return [
+            'wire' => $this->makeRole([
+                'name' => $name,
+                'grantsAll' => in_array(Permission::WILDCARD, $codes, true),
+                'permissionCount' => count($codes),
+                'scopeId' => $scopeId,
+            ], 'role_'.$name),
+            'codes' => $codes,
+            'scopeId' => $scopeId,
+        ];
+    }
+
+    /** @return array{wire:array<string,mixed>, codes:list<string>, scopeId:string}|null */
+    private function findRole(string $roleId): ?array
+    {
+        foreach ($this->allRoles() as $role) {
+            if ($role['wire']['id'] === $roleId) {
+                return $role;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function rolesForScope(string $scopeId): array
+    {
+        $roles = [];
+        foreach ($this->allRoles() as $role) {
+            if ($role['scopeId'] === $scopeId) {
+                $roles[] = $role['wire'];
+            }
+        }
+
+        return $roles;
+    }
+
+    /**
+     * The codes the roles at a scope compose, as permission rows.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function permissionsAt(string $scopeId): array
+    {
+        $codes = [];
+        foreach ($this->allRoles() as $role) {
+            if ($role['scopeId'] === $scopeId) {
+                $codes = array_merge($codes, $role['codes']);
+            }
+        }
+
+        return $this->permissionRows(array_values(array_unique($codes)), $scopeId);
+    }
+
+    /**
+     * @param  array<mixed>  $codes
+     * @return list<array<string,mixed>>
+     */
+    private function permissionRows(array $codes, string $scopeId): array
+    {
+        $rows = [];
+        foreach ($codes as $code) {
+            if (is_string($code) && $code !== Permission::WILDCARD) {
+                $rows[] = [
+                    'id' => 'perm_'.str_replace(':', '_', $code),
+                    'code' => $code,
+                    'name' => $code,
+                    'description' => null,
+                    'category' => null,
+                    'audience' => 'customer',
+                    'scopeId' => $scopeId,
+                    'createdAt' => '2024-01-01T00:00:00Z',
+                    'updatedAt' => '2024-01-01T00:00:00Z',
+                ];
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Every role the scenario's users hold, at the scope they hold it.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function allAssignments(): array
+    {
+        $rows = [];
+        foreach (array_keys($this->scenario->users) as $userId) {
+            foreach ($this->scenario->memberships((string) $userId)['memberships'] as $membership) {
+                $bu = $this->scenario->businessUnits[(string) ($membership['businessUnit']['id'] ?? '')] ?? null;
+                foreach ($membership['roles'] ?? [] as $role) {
+                    $rows[] = $this->heldAssignment((string) $userId, (string) $role['name'], (string) ($bu['iamScopeId'] ?? ''));
+                }
+                foreach ($membership['platformSubscriptions'] ?? [] as $sub) {
+                    foreach ($sub['roles'] ?? [] as $role) {
+                        $rows[] = $this->heldAssignment((string) $userId, (string) $role['name'], (string) $sub['scopeId']);
+                    }
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    /** @return array<string,mixed> */
+    private function heldAssignment(string $userId, string $roleName, string $scopeId): array
+    {
+        return ['id' => 'asg_'.$userId.'_'.$roleName] + $this->makeAssignment([
+            'subjectId' => $userId,
+            'roleId' => 'role_'.$roleName,
+            'roleName' => $roleName,
+            'scopeId' => $scopeId,
+        ]);
     }
 
     /**
@@ -665,13 +871,17 @@ final class InMemoryBackend
         $name = (string) ($input['name'] ?? '');
 
         return [
-            'id' => $id ?? ('r_'.($name !== '' ? $name : 'new')),
+            'id' => $id ?? ('role_'.($name !== '' ? $name : 'new')),
             'name' => $name,
             'description' => $input['description'] ?? null,
-            'permissions' => array_values(array_filter((array) ($input['permissions'] ?? []), 'is_string')),
-            'isSystem' => (bool) ($input['isSystem'] ?? false),
+            'audience' => 'customer',
+            'grantsAll' => (bool) ($input['grantsAll'] ?? false),
+            'custom' => (bool) ($input['custom'] ?? false),
+            'scopeId' => (string) ($input['scopeId'] ?? ''),
+            'permissionCount' => (int) ($input['permissionCount'] ?? count((array) ($input['permissionIds'] ?? []))),
             'assignmentCount' => (int) ($input['assignmentCount'] ?? 0),
             'createdAt' => '2024-01-01T00:00:00Z',
+            'updatedAt' => '2024-01-01T00:00:00Z',
         ];
     }
 
@@ -705,8 +915,7 @@ final class InMemoryBackend
             'type' => 'business_unit',
             'externalId' => null,
             'parentScopeId' => null,
-            'parentScope' => null,
-            'metadata' => [],
+            'catalogScopeId' => 'scope_road',
             'createdAt' => '2024-01-01T00:00:00Z',
         ], $overrides);
     }
@@ -894,7 +1103,7 @@ final class InMemoryBackend
             return $invitation;
         }
 
-        return $this->makeInvitation($id, 'unknown@test.local', 'r_member', $status);
+        return $this->makeInvitation($id, 'unknown@test.local', 'role_member', $status);
     }
 
     /**

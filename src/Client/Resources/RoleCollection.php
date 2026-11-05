@@ -8,14 +8,15 @@ use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\DTO\Role;
 
 /**
- * Roles, which live under an IAM scope (not directly under a BU). Reachable
- * two ways, both landing on `/iam/authorization/scopes/{scopeId}/roles`:
+ * Roles, which live under a scope (not directly under a BU). Listing and
+ * creating go through `/authz/scopes/{scopeId}/roles`, reached two ways:
  *
  *   Road::client()->businessUnits($buId)->roles()   // resolves the BU's scope
  *   Road::client()->iam()->scope($scopeId)->roles() // direct
  *
  * When constructed for a BU, the scope id is resolved from the BU detail once
- * and memoised. Mirrors `RoleCollection` / `makeRoleCollection` in road-nestjs.
+ * and memoised. A single role is addressed by its own id (`role_…`), so
+ * `get()`, `update()` and `delete()` need no scope.
  *
  * @extends Paginates<Role>
  */
@@ -43,30 +44,54 @@ final class RoleCollection extends Paginates
 
     public function get(string $roleId): Role
     {
-        $body = $this->http->request('GET', $this->rolesPath().'/'.rawurlencode($roleId));
-
-        return RoleWire::toDomain($this->unwrap($body));
+        return Role::from($this->unwrap($this->http->request('GET', $this->rolePath($roleId))));
     }
 
-    /** @param  array<string,mixed>  $input */
+    /**
+     * Create a role at the scope. `permissionIds` (`perm_…`) or
+     * `cloneFromRoleId` (`role_…`) say what it starts with.
+     *
+     * @param  array<string,mixed>  $input
+     */
     public function create(array $input): Role
     {
-        $body = $this->http->request('POST', $this->rolesPath(), $input);
-
-        return RoleWire::toDomain($this->unwrap($body));
+        return Role::from($this->unwrap($this->http->request('POST', $this->rolesPath(), $input)));
     }
 
     /** @param  array<string,mixed>  $input */
     public function update(string $roleId, array $input): Role
     {
-        $body = $this->http->request('PATCH', $this->rolesPath().'/'.rawurlencode($roleId), $input);
-
-        return RoleWire::toDomain($this->unwrap($body));
+        return Role::from($this->unwrap($this->http->request('PATCH', $this->rolePath($roleId), $input)));
     }
 
-    public function delete(string $roleId): void
+    /** Delete a role. Returns how many assignments ended with it. */
+    public function delete(string $roleId): int
     {
-        $this->http->request('DELETE', $this->rolesPath().'/'.rawurlencode($roleId));
+        $body = $this->http->request('DELETE', $this->rolePath($roleId));
+
+        return (int) ($this->unwrap($body)['assignmentsRevoked'] ?? 0);
+    }
+
+    /** What a role composes. */
+    public function permissions(string $roleId): PermissionCollection
+    {
+        return new PermissionCollection($this->http, $this->rolePath($roleId).'/permissions');
+    }
+
+    /** Add one permission (`perm_…`) to a role. */
+    public function compose(string $roleId, string $permissionId): Role
+    {
+        $body = $this->http->request('POST', $this->rolePath($roleId).'/permissions', ['permissionId' => $permissionId]);
+
+        return Role::from($this->unwrap($body));
+    }
+
+    /** Take one permission (`perm_…`) out of a role. */
+    public function decompose(string $roleId, string $permissionId): Role
+    {
+        $body = $this->http->request('DELETE', $this->rolePath($roleId).'/permissions/'.rawurlencode($permissionId));
+
+        return Role::from($this->unwrap($body));
     }
 
     protected function listPath(): string
@@ -76,16 +101,21 @@ final class RoleCollection extends Paginates
 
     protected function mapRow(array $row): Role
     {
-        return RoleWire::toDomain($row);
+        return Role::from($row);
     }
 
     private function rolesPath(): string
     {
-        return '/iam/authorization/scopes/'.rawurlencode($this->scopeId()).'/roles';
+        return '/authz/scopes/'.rawurlencode($this->scopeId()).'/roles';
+    }
+
+    private function rolePath(string $roleId): string
+    {
+        return '/authz/roles/'.rawurlencode($roleId);
     }
 
     /**
-     * Resolve (and memoise) the IAM scope id. When this collection was built
+     * Resolve (and memoise) the scope id. When this collection was built
      * for a BU, fetch the BU detail once to read its `iamScopeId`.
      */
     private function scopeId(): string

@@ -154,7 +154,7 @@ final class RoadScenario
             'status' => 'active',
             'joinedAt' => '2024-01-01T00:00:00Z',
             'roles' => array_map(
-                fn (string $r): array => ['id' => 'r_'.$r, 'name' => $r],
+                fn (string $r): array => ['id' => 'role_'.$r, 'name' => $r],
                 $roles,
             ),
             // The real /me/business-units wire always includes this array (empty
@@ -211,7 +211,7 @@ final class RoadScenario
     public function withInvitation(
         string $buId,
         string $email,
-        string $roleId = 'r_member',
+        string $roleId = 'role_member',
         ?string $roleName = null,
         string $status = 'pending',
         ?string $id = null,
