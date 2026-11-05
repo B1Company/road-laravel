@@ -17,6 +17,7 @@ final class CreateRoleDto extends Data
         public ?string $description = null,
         public ?array $permissionIds = null,
         public ?string $cloneFromRoleId = null,
+        public ?bool $grantsAll = null,
     ) {
     }
 }
