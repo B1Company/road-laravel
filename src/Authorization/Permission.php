@@ -28,17 +28,6 @@ final class Permission
         return $verb.':'.$noun;
     }
 
-    /**
-     * Whether a code belongs to Road's own catalog, going by its subject. Every
-     * other subject is a platform's.
-     */
-    public static function isRoadCode(string $permission): bool
-    {
-        $colon = strpos($permission, ':');
-
-        return $colon !== false && Subject::tryFrom(substr($permission, $colon + 1)) !== null;
-    }
-
     public static function isWildcard(string $permission): bool
     {
         return trim($permission) === self::WILDCARD;

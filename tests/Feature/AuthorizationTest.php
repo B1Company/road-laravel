@@ -10,6 +10,7 @@ use B1Road\Laravel\Exceptions\RoadAuthzException;
 use B1Road\Laravel\Facades\Road;
 use B1Road\Laravel\Testing\ActsAsRoadUser;
 use B1Road\Laravel\Testing\RoadScenario;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Route;
 
@@ -186,7 +187,7 @@ it('the #[RequirePermission] attribute enforces against the same code path', fun
         ->assertJsonPath('error.code', 'permission_denied');
 });
 
-it('wildcard role grants every action on every subject in the scope', function () {
+it('wildcard role grants every code the BU catalog declares, and only those', function () {
     Road::fake(
         RoadScenario::make()
             ->withUser('u_owner', email: 'o@b1.app')
@@ -196,8 +197,10 @@ it('wildcard role grants every action on every subject in the scope', function (
     );
     $this->actingAsRoadUser('u_owner');
 
-    expect(Road::can(Action::Manage, Subject::BusinessUnit)->in('bu_w')->check())->toBeTrue();
+    expect(Road::can(Action::Manage, Subject::Member)->in('bu_w')->check())->toBeTrue();
     expect(Road::can(Action::Delete, Subject::Role)->in('bu_w')->check())->toBeTrue();
+    // Road declares BusinessUnit codes at `system`, out of the BU's catalog.
+    expect(Road::can(Action::Manage, Subject::BusinessUnit)->in('bu_w')->check())->toBeFalse();
 });
 
 it('manage:Subject grants every CRUD verb on that subject', function () {
@@ -278,21 +281,42 @@ it('Road::can() accepts a platform-defined string subject', function () {
     Road::fake(scenarioWithProjectRoles());
 
     $this->actingAsRoadUser('u_admin');
-    expect(Road::can(Action::Create, 'Project')->in('bu_1')->permissionString())->toBe('create:Project');
-    expect(Road::can(Action::Create, 'Project')->in('bu_1')->check())->toBeTrue(); // manage:Project expands
-    expect(Road::can(Action::Delete, 'Project')->in('bu_1')->check())->toBeTrue();
+    expect(Road::can(Action::Create, 'Project')->forPlatform()->in('bu_1')->permissionString())->toBe('create:Project');
+    expect(Road::can(Action::Create, 'Project')->forPlatform()->in('bu_1')->check())->toBeTrue(); // manage:Project expands
+    expect(Road::can(Action::Delete, 'Project')->forPlatform()->in('bu_1')->check())->toBeTrue();
 
     $this->actingAsRoadUser('u_viewer');
-    expect(Road::can(Action::Read, 'Project')->in('bu_1')->check())->toBeTrue();
-    expect(Road::can(Action::Create, 'Project')->in('bu_1')->check())->toBeFalse();
+    expect(Road::can(Action::Read, 'Project')->forPlatform()->in('bu_1')->check())->toBeTrue();
+    expect(Road::can(Action::Create, 'Project')->forPlatform()->in('bu_1')->check())->toBeFalse();
 });
+
+#[RequirePermission(Action::Read, 'Project', in: 'buId', forPlatform: true)]
+class AuthzPlatformClassController extends Controller
+{
+    public function index(): array
+    {
+        return ['ok' => true];
+    }
+}
 
 class AuthzProjectController extends Controller
 {
-    #[RequirePermission(Action::Read, 'Project', in: 'buId')]
+    #[RequirePermission(Action::Read, 'Project', in: 'buId', forPlatform: true)]
     public function index(string $buId): array
     {
         return ['ok' => true, 'bu' => $buId];
+    }
+
+    #[RequirePermission(Action::Read, 'Project', in: 'buId')]
+    public function atBusinessUnit(string $buId): array
+    {
+        return ['ok' => true];
+    }
+
+    #[RequirePermission(Action::Read, 'Project', in: 'input:business_unit_id', forPlatform: true)]
+    public function fromInput(): array
+    {
+        return ['ok' => true];
     }
 }
 
@@ -314,10 +338,41 @@ it('the #[RequirePermission] attribute enforces a string subject', function () {
         ->assertJsonPath('error.code', 'permission_denied');
 });
 
+it('the attribute reaches the BU unless it says forPlatform', function () {
+    Road::fake(scenarioWithProjectRoles());
+
+    Route::middleware(['road.errors', 'road', 'road.permission.attribute'])
+        ->get('/bus/{buId}/projects-bu', [AuthzProjectController::class, 'atBusinessUnit']);
+
+    // u_viewer holds read:Project at the subscription, which a BU check never sees.
+    $this->actingAsRoadUser('u_viewer');
+    $this->getJson('/bus/bu_1/projects-bu')->assertForbidden();
+});
+
+it('the attribute takes forPlatform with a request-input source', function () {
+    Road::fake(scenarioWithProjectRoles());
+
+    Route::middleware(['road.errors', 'road', 'road.permission.attribute'])
+        ->get('/projects-input', [AuthzProjectController::class, 'fromInput']);
+
+    $this->actingAsRoadUser('u_viewer');
+    $this->getJson('/projects-input?business_unit_id=bu_1')->assertOk();
+});
+
+it('a class-level attribute carries forPlatform to every action', function () {
+    Road::fake(scenarioWithProjectRoles());
+
+    Route::middleware(['road.errors', 'road', 'road.permission.attribute'])
+        ->get('/bus/{buId}/projects-class', [AuthzPlatformClassController::class, 'index']);
+
+    $this->actingAsRoadUser('u_viewer');
+    $this->getJson('/bus/bu_1/projects-class')->assertOk();
+});
+
 it('the road.permission middleware enforces a string subject', function () {
     Road::fake(scenarioWithProjectRoles());
 
-    Route::middleware(['road.errors', 'road', 'road.permission:create,Project,buId'])
+    Route::middleware(['road.errors', 'road', 'road.permission:create,Project,platform:buId'])
         ->post('/bus/{buId}/projects', fn (string $buId) => ['ok' => true]);
 
     $this->actingAsRoadUser('u_admin');
@@ -330,4 +385,57 @@ it('the road.permission middleware enforces a string subject', function () {
     $this->postJson('/bus/bu_1/projects')
         ->assertForbidden()
         ->assertJsonPath('error.code', 'permission_denied');
+});
+
+it('the middleware reaches the BU unless the source says platform:', function () {
+    Road::fake(scenarioWithProjectRoles());
+
+    Route::middleware(['road.errors', 'road', 'road.permission:read,Project,buId'])
+        ->get('/bus/{buId}/projects-bu-mw', fn (string $buId) => ['ok' => true]);
+
+    // u_viewer holds read:Project at the subscription, which a BU check never sees.
+    $this->actingAsRoadUser('u_viewer');
+    $this->getJson('/bus/bu_1/projects-bu-mw')->assertForbidden();
+});
+
+it('platform: composes with a request-input source', function () {
+    Road::fake(scenarioWithProjectRoles());
+
+    Route::middleware(['road.errors', 'road', 'road.permission:read,Project,platform:input:business_unit_id'])
+        ->get('/projects-input-mw', fn (Request $request) => ['ok' => true]);
+
+    $this->actingAsRoadUser('u_viewer');
+    $this->getJson('/projects-input-mw?business_unit_id=bu_1')->assertOk();
+});
+
+it('a route parameter named platform is still a route parameter', function () {
+    Road::fake(
+        RoadScenario::make()
+            ->withUser('u_reader')
+            ->withBusinessUnit('bu_1')
+            ->withRole('bu_1', 'Reader', permissions: ['read:Member'])
+            ->withMember('bu_1', 'u_reader', roles: ['Reader'])
+    );
+
+    Route::middleware(['road.errors', 'road', 'road.permission:read,Member,platform'])
+        ->get('/bus/{platform}/members', fn (string $platform) => ['ok' => true]);
+
+    $this->actingAsRoadUser('u_reader');
+    $this->getJson('/bus/bu_1/members')->assertOk();
+});
+
+it('a declarative platform target with no platform id stops with the clear error', function () {
+    Road::fake(scenarioWithProjectRoles());
+    config(['road.platform_id' => null]);
+
+    Route::middleware(['road', 'road.permission:read,Project,platform:buId'])
+        ->get('/bus/{buId}/projects-no-platform', fn (string $buId) => ['ok' => true]);
+    Route::middleware(['road', 'road.permission.attribute'])
+        ->get('/bus/{buId}/projects-no-platform-attr', [AuthzProjectController::class, 'index']);
+
+    $this->actingAsRoadUser('u_viewer');
+    $this->withoutExceptionHandling();
+
+    expect(fn () => $this->getJson('/bus/bu_1/projects-no-platform'))->toThrow(LogicException::class, 'ROAD_PLATFORM_ID');
+    expect(fn () => $this->getJson('/bus/bu_1/projects-no-platform-attr'))->toThrow(LogicException::class, 'ROAD_PLATFORM_ID');
 });

@@ -28,8 +28,9 @@ return [
 
     /*
     | The platform this app is (`plat_…`), the same ROAD_PLATFORM_ID the Node
-    | SDKs read. A Bridge presence assertion is bound to it, so
-    | `bridge()->presenceAssertion()` and `exchangeForUser()` need it.
+    | SDKs read. `Road::can(...)->forPlatform()` checks it. A Bridge presence
+    | assertion is bound to it, so `bridge()->presenceAssertion()` and
+    | `exchangeForUser()` need it.
     */
 
     'platform_id' => env('ROAD_PLATFORM_ID'),
@@ -211,8 +212,9 @@ return [
     | cross-platform capability, is configured under `platform_bridge` above.)
     |
     | gate — route `road:{action}:{Subject}` abilities through Road's engine so
-    | `Gate::allows('road:read:Project', $buId)`, `$user->can(...)`, and Blade
-    | `@can(...)` answer via Road. Off by default: a host that never uses the
+    | `Gate::allows('road:read:Member', $buId)`, `$user->can(...)`, and Blade
+    | `@can(...)` answer via Road. `road:platform:{action}:{Subject}` asks your
+    | platform's catalog instead. Off by default: a host that never uses the
     | Gate for Road shouldn't pay for the `Gate::before` hook.
     |
     */

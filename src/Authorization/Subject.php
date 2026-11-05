@@ -5,14 +5,15 @@ declare(strict_types=1);
 namespace B1Road\Laravel\Authorization;
 
 /**
- * The nouns of Road's permission algebra. Mirrors `RoadCoreSubject` in
- * `@b1-road/types`. The backed-enum string is exactly the wire form
- * (PascalCase) so `Subject::Member->value === 'Member'`.
+ * Common nouns of Road's permission algebra, for typing a code without a
+ * string. Mirrors `RoadCoreSubject` in `@b1-road/types`. The backed-enum string
+ * is exactly the wire form (PascalCase) so `Subject::Member->value === 'Member'`.
  *
- * Custom platform-defined subjects are intentionally not modelled as
- * enum cases: the wire allows arbitrary strings, and integrators pass
- * them as strings (see `Can`). A subject here is what makes a check
- * Road's own; any other subject is checked in your platform's catalog.
+ * A convenience, not a catalog: Road declares more subjects than these, and a
+ * platform may declare codes on these same ones. The target of a check picks
+ * the catalog that answers it (see `Can`), never the subject. Platform-defined
+ * subjects are intentionally not modelled as enum cases: the wire allows
+ * arbitrary strings, and integrators pass them as strings.
  */
 enum Subject: string
 {

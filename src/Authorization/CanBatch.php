@@ -11,21 +11,27 @@ use B1Road\Laravel\Exceptions\RoadAuthnException;
 
 /**
  * Batched permission checks for one business unit. Built by
- * `Road::canMany([...])`. One `POST /authz/checks` answers every code that
- * shares a catalog, so a batch of Road codes is one round-trip, and mixing them
- * with your platform's codes is two.
+ * `Road::canMany([...])`. The target picks the catalog, as on {@see Can}, and
+ * one `POST /authz/checks` answers every check with the same target: a batch at
+ * one target is one round-trip, and mixing the BU with the subscription is two.
  *
  *   $allowed = Road::canMany([
- *       Road::can(Action::Read,   Subject::Member),
- *       Road::can(Action::Update, Subject::Role),
+ *       Road::can(Action::Read, Subject::Member),
+ *       Road::can('read', 'Invoice')->forPlatform(),
  *   ])->in($buId)->resolve();
  *   // → [true, false]
+ *
+ *   Road::canMany([...])->forPlatform()->in($buId)->resolve(); // all at the subscription
  */
 final class CanBatch
 {
     private ?string $businessUnitId = null;
 
     private ?string $scopeId = null;
+
+    private bool $subscription = false;
+
+    private ?string $platformId = null;
 
     /** @param  list<Can>  $checks */
     public function __construct(
@@ -47,6 +53,18 @@ final class CanBatch
     {
         $this->scopeId = $scopeId;
         $this->businessUnitId = null;
+
+        return $this;
+    }
+
+    /**
+     * Send every check to the subscription. See {@see Can::forPlatform()}. A
+     * platform id here replaces any a check named for itself.
+     */
+    public function forPlatform(?string $platformId = null): self
+    {
+        $this->subscription = true;
+        $this->platformId = $platformId;
 
         return $this;
     }
@@ -75,6 +93,9 @@ final class CanBatch
         $groups = [];
         foreach ($this->checks as $position => $check) {
             $bound = clone $check;
+            if ($this->subscription) {
+                $bound->forPlatform($this->platformId);
+            }
             $address = ($this->scopeId !== null ? $bound->inScope($this->scopeId) : $bound->in((string) $this->businessUnitId))->address();
             $key = (string) json_encode($address);
             $groups[$key] ??= ['address' => $address, 'positions' => [], 'codes' => []];
@@ -88,6 +109,7 @@ final class CanBatch
             $results = $iam->check($group['address'] + ['codes' => $group['codes']])->results;
             foreach ($group['positions'] as $i => $position) {
                 $allowed[$position] = $results[$i]->allowed;
+                Can::hintOnUnknownCode($results[$i], $group['address']);
             }
         }
         ksort($allowed);

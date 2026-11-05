@@ -18,13 +18,15 @@ use B1Road\Laravel\Authorization\Subject;
  *
  * Both `action` and `subject` accept either the canonical enum or a raw
  * string, so a platform-defined subject works the same as in
- * `@b1-road/nestjs`:
+ * `@b1-road/nestjs`. Add `forPlatform: true` to check it at the business
+ * unit's subscription, where your platform's catalog answers:
  *
- *   #[RequirePermission(Action::Read, 'Project', in: 'buId')]
+ *   #[RequirePermission(Action::Read, 'Project', in: 'buId', forPlatform: true)]
  *
  * The `in` argument is the route parameter name whose value is the
- * scope id (typically the Business Unit id). For request-input
- * sources, prefix with `input:` (e.g. `in: 'input:business_unit_id'`).
+ * Business Unit id. For request-input sources, prefix with `input:`
+ * (e.g. `in: 'input:business_unit_id'`). Without `forPlatform` the check
+ * runs at the Business Unit, where Road's catalog answers.
  *
  * Applied at the class level, the requirement covers every action on
  * the controller; method-level attributes override the class-level one.
@@ -41,5 +43,6 @@ final readonly class RequirePermission
         public Action|string $action,
         public Subject|string $subject,
         public string $in,
+        public bool $forPlatform = false,
     ) {}
 }

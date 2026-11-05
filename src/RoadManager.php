@@ -290,10 +290,11 @@ final class RoadManager
      * string, so platform-defined subjects outside Road's core algebra work
      * the same way they do in `@b1-road/nestjs`:
      *
-     *   Road::can(Action::Create, 'Project')->in($buId)->check();
+     *   Road::can(Action::Create, 'Project')->forPlatform()->in($buId)->check();
      *
-     * A subject outside Road's own set is checked in your platform's catalog,
-     * at the business unit's subscription to `road.platform_id`.
+     * The target picks the catalog: `in()` alone asks Road's at the business
+     * unit, and `forPlatform()` asks yours at the unit's subscription to
+     * `road.platform_id`.
      */
     public function can(Action|string $action, Subject|string $subject): Can
     {
@@ -308,11 +309,13 @@ final class RoadManager
 
     /**
      * Build a batched permission check. All `$checks` share one business
-     * unit, set via `->in($buId)` on the returned batch.
+     * unit, set via `->in($buId)` on the returned batch. Each check keeps its
+     * own target, and `->forPlatform()` on the batch moves them all to the
+     * subscription.
      *
      *   $allowed = Road::canMany([
      *       Road::can(Action::Read, Subject::Member),
-     *       Road::can(Action::Update, Subject::Role),
+     *       Road::can('read', 'Invoice')->forPlatform(),
      *   ])->in($buId)->resolve();
      *
      * @param  list<Can>  $checks

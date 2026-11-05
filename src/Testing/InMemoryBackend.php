@@ -25,6 +25,41 @@ final class InMemoryBackend
     /** What `manage:X` implies, as the engine expands it. */
     private const MANAGE_IMPLIES = ['create', 'read', 'update', 'delete'];
 
+    /**
+     * Road's own definitions, by the root that owns them, as `roadPermissions()`
+     * in the API's `authz/seed/road-definitions.ts` writes them. The scope tree
+     * reads these by reference: a BU's catalog is `business_units` and nothing
+     * else, so `read:BusinessUnit`, declared at `system`, is unknown at a BU.
+     * `RoadCatalogDriftTest` holds this list to those sources.
+     */
+    private const ROAD_CATALOG = [
+        'system' => [
+            'create:BusinessUnit', 'read:BusinessUnit', 'manage:System', 'manage:AdminUser',
+            'create:Platform', 'read:Platform', 'update:Platform', 'manage:Platform',
+            'manage:PlatformIdentity', 'update:PlatformOperations', 'manage:PlatformHomologation',
+            'create:PlatformContract', 'read:PlatformContract', 'update:PlatformContract',
+            'manage:CrossPlatformGrant', 'read:CrossPlatformAudit',
+            'read:Scope', 'read:Permission', 'manage:Permission', 'read:Role', 'manage:Role', 'manage:Assignment',
+        ],
+        'business_units' => [
+            'read:Member', 'manage:Member', 'read:Invitation', 'manage:Invitation',
+            'read:Role', 'manage:Role', 'read:Permission', 'manage:Permission',
+            'read:BUSettings', 'update:BUSettings', 'read:BUDashboard', 'manage:PlatformPermissions',
+            'read:ExtensionInstall', 'manage:ExtensionInstall', 'read:Scope', 'manage:Assignment',
+        ],
+        'developer_accounts' => [
+            'read:DeveloperAccount', 'manage:DeveloperAccount', 'create:Platform',
+            'read:Extension', 'create:Extension', 'manage:Extension',
+        ],
+        'platforms' => [
+            'read:Platform', 'update:Platform', 'manage:Platform', 'manage:PlatformIdentity',
+            'update:PlatformOperations', 'read:PlatformCredential', 'create:PlatformCredential',
+            'update:PlatformCredential', 'delete:PlatformCredential', 'manage:PlatformCredential',
+            'read:ExtensionPoint', 'manage:ExtensionPoint',
+            'read:Permission', 'manage:Permission', 'read:Role', 'manage:Role',
+        ],
+    ];
+
     /** What `CreateAssignmentDto` takes. */
     private const ASSIGNMENT_FIELDS = ['subjectType', 'subjectId', 'roleId', 'expiresAt'];
 
@@ -395,9 +430,10 @@ final class InMemoryBackend
 
     /**
      * The engine's verdict for one code. A scope has one catalog: Road's at a
-     * BU, the platform's at a subscription. A code outside it is
-     * `denied_unknown_code` and a role of another catalog never answers for it,
-     * except a BU's `*`, which covers every scope below the BU.
+     * BU, the platform's at a subscription. `catalog: road` asks all of Road's
+     * instead. A code outside the catalog is `denied_unknown_code` and a role of
+     * another catalog never answers for it, except a BU's `*`, which covers the
+     * BU's catalog and every scope below the BU. Codes match case-insensitively.
      *
      * @param  array{bu:array<string,mixed>, platformId:?string}|null  $scope
      * @return array{code:string, allowed:bool, reason:string}
@@ -413,24 +449,26 @@ final class InMemoryBackend
         $held = $this->scenario->effectivePermissions($subject, $buId);
         $hasAll = in_array(Permission::WILDCARD, $held, true);
 
+        // Road's catalog declares its own codes and nothing else, whatever a
+        // scenario's BU roles list.
+        $covered = self::ROAD_CATALOG['business_units'];
+        $declared = $roadCatalog ? array_merge(...array_values(self::ROAD_CATALOG)) : $covered;
         if ($scope['platformId'] !== null && ! $roadCatalog) {
             $platformId = $scope['platformId'];
             $declared = array_merge(...array_values(['' => []] + $this->scenario->subscriptions[$buId][$platformId]['roles']));
+            $covered = $declared;
             $held = $this->scenario->subscriptionPermissions($subject, $buId, $platformId);
             $hasAll = $hasAll || in_array(Permission::WILDCARD, $held, true);
-        } else {
-            // Road's catalog declares its own codes and nothing else, whatever
-            // a scenario's BU roles list.
-            $declared = Permission::isRoadCode($code) ? [$code] : [];
         }
 
-        if (! $this->satisfiedBy($declared, $code)) {
+        $candidates = $this->candidates($declared, $code);
+        if ($candidates === []) {
             return $deny('denied_unknown_code');
         }
-        if ($this->satisfiedBy($held, $code)) {
+        if (array_intersect($candidates, array_map('strtolower', $held)) !== []) {
             return ['code' => $code, 'allowed' => true, 'reason' => 'allowed_role'];
         }
-        if ($hasAll) {
+        if ($hasAll && $this->candidates($covered, $code) !== []) {
             return ['code' => $code, 'allowed' => true, 'reason' => 'allowed_grants_all'];
         }
 
@@ -438,19 +476,23 @@ final class InMemoryBackend
     }
 
     /**
-     * A declared code satisfies a required one when it is the same code, or
-     * `manage` on the same subject asked for a CRUD action.
+     * The declared codes that satisfy a required one, lower-cased: the same
+     * code, or `manage` on the same subject asked for a CRUD action. A role
+     * passes only by holding one of these.
      *
      * @param  list<string>  $declared
+     * @return list<string>
      */
-    private function satisfiedBy(array $declared, string $required): bool
+    private function candidates(array $declared, string $required): array
     {
-        if (in_array($required, $declared, true)) {
-            return true;
-        }
+        $required = strtolower($required);
         [$action, $noun] = array_pad(explode(':', $required, 2), 2, '');
+        $manage = in_array($action, self::MANAGE_IMPLIES, true) ? 'manage:'.$noun : null;
 
-        return in_array($action, self::MANAGE_IMPLIES, true) && in_array('manage:'.$noun, $declared, true);
+        return array_values(array_filter(
+            array_map('strtolower', $declared),
+            static fn (string $code): bool => $code === $required || $code === $manage,
+        ));
     }
 
     /**
@@ -477,7 +519,7 @@ final class InMemoryBackend
 
         $codes = [];
         foreach ($held as $code) {
-            if ($scope['platformId'] === null && ! Permission::isRoadCode($code)) {
+            if ($scope['platformId'] === null && ! in_array(strtolower($code), array_map('strtolower', self::ROAD_CATALOG['business_units']), true)) {
                 continue;
             }
             $codes[$code] = true;

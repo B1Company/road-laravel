@@ -11,19 +11,20 @@ use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\DTO\CheckDecision;
 use B1Road\Laravel\Exceptions\RoadApiException;
 use B1Road\Laravel\Exceptions\RoadAuthnException;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Fluent permission-check builder. Created by `Road::can(...)`. Lazy:
  * no HTTP call until `check()` / `trace()` / `result()` runs.
  *
  *   Road::can(Action::Read, Subject::Member)->in($buId)->check();
- *   Road::can('read', 'Invoice')->in($buId)->check();
+ *   Road::can('read', 'Invoice')->forPlatform()->in($buId)->check();
  *
- * The code decides whose catalog answers. A {@see Subject} is Road's, so it is
- * checked at the business unit. Any other subject is your platform's, so it is
- * checked at the unit's subscription to `road.platform_id`. Two overrides:
- * `forPlatform()` for your own code that shares a name with Road's, `inScope()`
- * to name a scope yourself.
+ * The target picks the catalog. `in()` alone is the business unit, so Road's
+ * catalog answers. `forPlatform()` is the unit's subscription to
+ * `road.platform_id`, so your platform's catalog answers. `inScope()` names a
+ * scope yourself, and that scope's catalog answers. What a code looks like
+ * never changes the target: a platform may declare `manage:Role` too.
  */
 final class Can
 {
@@ -31,7 +32,7 @@ final class Can
 
     private ?string $scopeId = null;
 
-    private bool $platformCode = false;
+    private bool $subscription = false;
 
     private string $permission;
 
@@ -63,12 +64,13 @@ final class Can
     }
 
     /**
-     * Check in a platform's catalog even when the code reads like Road's, as
-     * `manage:Role` does. Defaults to `road.platform_id`.
+     * Check at the business unit's subscription, so the platform's catalog
+     * answers. Name the unit with `in()`, before or after this. The platform
+     * defaults to `road.platform_id`.
      */
     public function forPlatform(?string $platformId = null): self
     {
-        $this->platformCode = true;
+        $this->subscription = true;
         $this->platformId = $platformId ?? $this->platformId;
 
         return $this;
@@ -125,7 +127,48 @@ final class Can
 
         // No subject on the wire: the API checks the caller the access token
         // names, which also keeps a service client right with no extra work.
-        return (new Iam($this->http))->check($this->address() + ['codes' => [$this->permission]])->results[0];
+        $address = $this->address();
+        $decision = (new Iam($this->http))->check($address + ['codes' => [$this->permission]])->results[0];
+        self::hintOnUnknownCode($decision, $address);
+
+        return $decision;
+    }
+
+    /**
+     * Log where to look when the target's catalog does not declare the code.
+     * That verdict is the same for every caller, so it reads as a developer
+     * error, and the usual cause is a check aimed at the wrong catalog. It
+     * changes nothing about the decision. The API keeps the reason from a
+     * caller who holds nothing on the scope's chain, so a `denied_no_grant`
+     * can hide the same mistake.
+     *
+     * @internal
+     *
+     * @param  array<string,string>  $address
+     */
+    public static function hintOnUnknownCode(CheckDecision $decision, array $address): void
+    {
+        if ($decision->reason !== 'denied_unknown_code') {
+            return;
+        }
+
+        [$target, $nextStep] = match (true) {
+            isset($address['scopeId']) => [
+                "scope {$address['scopeId']}",
+                'Confirm this is the scope you meant.',
+            ],
+            isset($address['platformId']) => [
+                "the subscription to {$address['platformId']} in business unit {$address['businessUnitId']}",
+                "If the code is Road's, drop forPlatform(). If it is your platform's, declare it in your catalog.",
+            ],
+            default => [
+                "business unit {$address['businessUnitId']}",
+                "If the code is your platform's, add forPlatform().",
+            ],
+        };
+
+        Log::warning("Road denied '{$decision->code}' at {$target} with denied_unknown_code: "
+            ."this catalog does not declare it. The code may belong to another catalog, so check the target. {$nextStep}");
     }
 
     public function permissionString(): string
@@ -139,14 +182,21 @@ final class Can
     }
 
     /**
-     * How this check names its scope on the wire: `scopeId`, `businessUnitId`,
-     * or `businessUnitId` plus `platformId`.
+     * How this check names its target on the wire: `scopeId`, `businessUnitId`,
+     * or `businessUnitId` plus `platformId` after `forPlatform()`.
      *
      * @return array<string,string>
      */
     public function address(): array
     {
         if ($this->scopeId !== null && $this->scopeId !== '') {
+            if ($this->subscription) {
+                throw new \LogicException(
+                    'forPlatform() and inScope() name two different targets. '
+                    .'Keep inScope($scopeId) for that scope, or forPlatform()->in($buId) for the subscription.'
+                );
+            }
+
             return ['scopeId' => $this->scopeId];
         }
         if ($this->businessUnitId === null || $this->businessUnitId === '') {
@@ -155,13 +205,13 @@ final class Can
                 .'Pass the Business Unit id you are authorizing against.'
             );
         }
-        if (! $this->platformCode && Permission::isRoadCode($this->permission)) {
+        if (! $this->subscription) {
             return ['businessUnitId' => $this->businessUnitId];
         }
         if ($this->platformId === '') {
             throw new \LogicException(
-                "'{$this->permission}' is not a Road code, so it is checked in your platform's catalog. "
-                .'Set ROAD_PLATFORM_ID, or call ->forPlatform($platformId).'
+                "forPlatform() checks '{$this->permission}' at a platform's subscription, and no platform id is set. "
+                .'Set ROAD_PLATFORM_ID, or name it: ->forPlatform(\'plat_...\').'
             );
         }
 

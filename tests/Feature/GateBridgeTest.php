@@ -27,7 +27,8 @@ function gateScenario(): RoadScenario
         ->withUser('u_admin', email: 'a@road.test')
         ->withUser('u_viewer', email: 'v@road.test')
         ->withBusinessUnit('bu_1', iamScopeId: 'scope_bu_1')
-        ->withMember('bu_1', 'u_admin', roles: [])
+        ->withRole('bu_1', 'BuReader', permissions: ['read:Member'])
+        ->withMember('bu_1', 'u_admin', roles: ['BuReader'])
         ->withMember('bu_1', 'u_viewer', roles: [])
         ->withSubscription('bu_1', 'plat_acme',
             roles: ['Admin' => ['manage:Project'], 'Viewer' => ['read:Project']],
@@ -39,17 +40,46 @@ beforeEach(function () {
     GateBridge::register(app(GateContract::class), app(RoadContext::class));
 });
 
-it('answers road:* Gate abilities through Road', function () {
+it('answers road:platform:* Gate abilities from the platform catalog', function () {
     Road::fake(gateScenario());
 
     $this->actingAsRoadUser('u_admin');
-    expect(Gate::allows('road:read:Project', 'bu_1'))->toBeTrue();
-    expect(Gate::allows('road:create:Project', 'bu_1'))->toBeTrue(); // manage:Project expands
-    expect(Gate::allows('road:delete:Project', 'bu_1'))->toBeTrue();
+    expect(Gate::allows('road:platform:read:Project', 'bu_1'))->toBeTrue();
+    expect(Gate::allows('road:platform:create:Project', 'bu_1'))->toBeTrue(); // manage:Project expands
+    expect(Gate::allows('road:platform:delete:Project', 'bu_1'))->toBeTrue();
 
     $this->actingAsRoadUser('u_viewer');
-    expect(Gate::allows('road:read:Project', 'bu_1'))->toBeTrue();
-    expect(Gate::allows('road:create:Project', 'bu_1'))->toBeFalse();
+    expect(Gate::allows('road:platform:read:Project', 'bu_1'))->toBeTrue();
+    expect(Gate::allows('road:platform:create:Project', 'bu_1'))->toBeFalse();
+});
+
+it('answers road:* Gate abilities from Road\'s catalog at the BU', function () {
+    Road::fake(gateScenario());
+
+    $this->actingAsRoadUser('u_admin');
+    expect(Gate::allows('road:read:Member', 'bu_1'))->toBeTrue();
+    expect(Gate::allows('road:read:Project', 'bu_1'))->toBeFalse(); // the BU does not declare it
+    expect(Gate::allows('road:platform:read:Member', 'bu_1'))->toBeFalse(); // the platform does not either
+});
+
+it('defers any other four-part road: ability', function (string $ability) {
+    Road::fake(gateScenario());
+    $this->actingAsRoadUser('u_admin');
+
+    expect(Gate::allows($ability, 'bu_1'))->toBeFalse();
+})->with([
+    'another marker' => 'road:other:read:Project',
+    'marker in last place' => 'road:read:Project:platform',
+    'five parts' => 'road:platform:read:Project:extra',
+    'an empty action' => 'road:platform::Project',
+]);
+
+it('stops with the clear error when road:platform: has no platform id', function () {
+    Road::fake(gateScenario());
+    config(['road.platform_id' => null]);
+    $this->actingAsRoadUser('u_admin');
+
+    expect(fn () => Gate::allows('road:platform:read:Project', 'bu_1'))->toThrow(LogicException::class, 'ROAD_PLATFORM_ID');
 });
 
 it('defers non-road abilities instead of blanket-allowing', function () {
@@ -85,10 +115,10 @@ it('defers when asked about a different identity than the Road user (forUser)', 
     // bridge must defer (return null → deny) rather than answer u_admin's verdict
     // under someone else's name.
     $other = new RoadUser(id: 'u_someone_else', email: 'x@road.test', name: 'X');
-    expect(Gate::forUser($other)->allows('road:read:Project', 'bu_1'))->toBeFalse();
+    expect(Gate::forUser($other)->allows('road:platform:read:Project', 'bu_1'))->toBeFalse();
 
     // Sanity: the same ability for the actual Road user still resolves true.
-    expect(Gate::allows('road:read:Project', 'bu_1'))->toBeTrue();
+    expect(Gate::allows('road:platform:read:Project', 'bu_1'))->toBeTrue();
 });
 
 it('is wired by the provider when road.bridges.gate is enabled', function () {

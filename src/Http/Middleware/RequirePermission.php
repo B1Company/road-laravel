@@ -15,12 +15,19 @@ use Symfony\Component\HttpFoundation\Response;
  *   Route::middleware('road.permission:read,Member,buId')
  *        ->get('/bus/{buId}/members', ...);
  *
+ *   Route::middleware('road.permission:read,Project,platform:buId')
+ *        ->get('/bus/{buId}/projects', ...);
+ *
  * Args:
  *   1. action (`create | read | update | delete | manage`)
  *   2. Subject (`BusinessUnit | Member | Role | ...` — PascalCase; or any
  *      platform-defined subject string, e.g. `Project`)
  *   3. scope source: either a route-parameter name (`buId`) or a
- *      request-input key prefixed with `input:` (`input:business_unit_id`)
+ *      request-input key prefixed with `input:` (`input:business_unit_id`).
+ *      This is the target. Alone it is the business unit, so Road's catalog
+ *      answers. Prefixed with `platform:` (`platform:buId`,
+ *      `platform:input:business_unit_id`) it is the unit's subscription to
+ *      `road.platform_id`, so your platform's catalog answers.
  *
  * On deny: throws `RoadAuthzException` with the DecisionTrace. Apply
  * the `road.errors` middleware ahead of this one to convert the
@@ -31,6 +38,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class RequirePermission
 {
+    private const PLATFORM_PREFIX = 'platform:';
+
     public function handle(Request $request, Closure $next, string ...$args): Response
     {
         if (count($args) < 3) {
@@ -42,12 +51,17 @@ final class RequirePermission
 
         [$actionArg, $subjectArg, $scopeSource] = $args;
 
-        $scopeId = $this->resolveScopeId($request, $scopeSource);
+        $forPlatform = str_starts_with($scopeSource, self::PLATFORM_PREFIX);
+        $scopeId = $this->resolveScopeId(
+            $request,
+            $forPlatform ? substr($scopeSource, strlen(self::PLATFORM_PREFIX)) : $scopeSource,
+        );
 
         // Action + Subject pass through as raw strings — `Road::can()` accepts
         // the canonical enum or a platform-defined string subject (e.g.
-        // `read,Project,buId`), matching @b1-road/nestjs.
-        Road::assert(Road::can($actionArg, $subjectArg)->in($scopeId));
+        // `read,Project,platform:buId`), matching @b1-road/nestjs.
+        $check = Road::can($actionArg, $subjectArg);
+        Road::assert(($forPlatform ? $check->forPlatform() : $check)->in($scopeId));
 
         /** @var Response $response */
         $response = $next($request);

@@ -10,14 +10,16 @@ use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Auth\Authenticatable;
 
 /**
- * Makes Road answer Laravel's native authorization. Any ability of the form
- * `road:{action}:{Subject}` — with the business-unit (scope) id as the first
- * argument — delegates to Road's engine, so a Laravel dev reaches Road through
- * the idioms they already know:
+ * Makes Road answer Laravel's native authorization. An ability of the form
+ * `road:{action}:{Subject}` checks Road's catalog at the business unit, and
+ * `road:platform:{action}:{Subject}` checks your platform's catalog at the
+ * unit's subscription. The first argument is the business-unit id in both, so a
+ * Laravel dev reaches Road through the idioms they already know:
  *
- *   Gate::allows('road:create:Project', $buId)
- *   $request->user()->can('road:read:Project', $buId)
- *   Blade `@can` on a `road:read:Project` ability (first arg = the BU id)
+ *   Gate::allows('road:read:Member', $buId)
+ *   Gate::allows('road:platform:create:Project', $buId)
+ *   $request->user()->can('road:platform:read:Project', $buId)
+ *   Blade `@can` on a `road:platform:read:Project` ability (first arg = the BU id)
  *
  * Opt-in via `road.bridges.gate` (default off) — a host app that never touches
  * Laravel's Gate for Road shouldn't pay for a `Gate::before` hook it doesn't use.
@@ -43,6 +45,10 @@ final class GateBridge
             }
 
             $parts = explode(':', $ability);
+            $forPlatform = count($parts) === 4 && $parts[1] === 'platform';
+            if ($forPlatform) {
+                array_splice($parts, 1, 1);
+            }
             if (count($parts) !== 3) {
                 return null;
             }
@@ -70,7 +76,9 @@ final class GateBridge
                 }
             }
 
-            return Road::can($action, $subject)->in($buId)->check();
+            $check = Road::can($action, $subject);
+
+            return ($forPlatform ? $check->forPlatform() : $check)->in($buId)->check();
         });
     }
 }

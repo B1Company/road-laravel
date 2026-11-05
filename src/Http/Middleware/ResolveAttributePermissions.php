@@ -44,7 +44,8 @@ final class ResolveAttributePermissions
             $attribute = $this->methodAttribute($method) ?? $this->classAttribute($class);
             if ($attribute !== null) {
                 $scopeId = $this->resolveScopeId($request, $attribute->in);
-                Road::assert(Road::can($attribute->action, $attribute->subject)->in($scopeId));
+                $check = Road::can($attribute->action, $attribute->subject);
+                Road::assert(($attribute->forPlatform ? $check->forPlatform() : $check)->in($scopeId));
             }
         }
 
