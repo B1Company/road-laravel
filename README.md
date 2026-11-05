@@ -232,7 +232,9 @@ Route::middleware(['road.errors', 'road', 'road.permission:read,Member,buId'])
 
 The args are `action, Subject, scopeSource`. `scopeSource` is a route
 parameter name by default (`buId`); prefix with `input:` to pull from
-the request body/query (`input:business_unit_id`).
+the request body/query (`input:business_unit_id`). Prefix with `platform:`
+to check your platform's catalog (`platform:buId`, see
+[below](#roads-codes-and-your-platforms)).
 
 ### PHP attribute (controllers)
 
@@ -265,7 +267,7 @@ if (! Road::can(Action::Read, Subject::Member)->in($buId)->check()) {
 // Throws on deny with a structured DecisionTrace
 Road::assert(Road::can(Action::Update, Subject::Role)->in($buId));
 
-// One round-trip for the codes of one catalog
+// One round-trip per target
 [$canRead, $canUpdate, $canDelete] = Road::canMany([
     Road::can(Action::Read,   Subject::Member),
     Road::can(Action::Update, Subject::Member),
@@ -279,33 +281,47 @@ $trace = Road::can(Action::Read, Subject::Member)->in($buId)->trace();
 
 ### Road's codes and your platform's
 
-Every scope has one catalog, and the code decides which one answers:
+**The target picks the catalog.** Every scope has one, and a check goes where you
+point it:
 
 ```php
-Road::can(Action::Read, Subject::Member)->in($buId)->check(); // Road's code, checked at the business unit
-Road::can('read', 'Invoice')->in($buId)->check();             // your code, checked at the unit's subscription
+Road::can(Action::Read, Subject::Member)->in($buId)->check();    // the business unit: Road's catalog answers
+Road::can('read', 'Invoice')->forPlatform()->in($buId)->check(); // the unit's subscription: your catalog answers
+Road::can('read', 'Invoice')->inScope($scopeId)->check();        // a scope you hold the id of: its catalog answers
 ```
 
-A subject in the `Subject` enum is Road's, whether you pass the enum or the
-string, so the middleware and Gate forms follow the same rule. Any other subject
-is your platform's, which needs `ROAD_PLATFORM_ID`. Without it the check throws
-before any request. A business unit with no subscription to your platform is a
-`RoadNotFoundException`, not a denial.
+The code never moves a check. Your platform can declare `manage:Role` too, so
+`->in($buId)` asks about Road's `manage:Role` and `->forPlatform()->in($buId)`
+asks about yours. `Subject` saves you typing a string, and it is not a list of
+what belongs to Road.
 
-Two overrides, for when the rule is not what you mean:
+`forPlatform()` reads `ROAD_PLATFORM_ID`, and `->forPlatform('plat_…')` names
+another platform. With neither, the check throws before any request. A business
+unit with no subscription to that platform is a `RoadNotFoundException`, not a
+denial.
 
-```php
-// Your platform declares a code that reads like Road's
-Road::can(Action::Manage, Subject::Role)->forPlatform()->in($buId)->check();
+Every form takes the same two targets:
 
-// You already hold a scope id: its catalog answers
-Road::can('read', 'Invoice')->inScope($scopeId)->check();
-```
+| Form | Business unit | Subscription |
+| --- | --- | --- |
+| Middleware | `road.permission:read,Member,buId` | `road.permission:read,Invoice,platform:buId` |
+| Attribute | `#[RequirePermission(Action::Read, Subject::Member, in: 'buId')]` | `#[RequirePermission(Action::Read, 'Invoice', in: 'buId', forPlatform: true)]` |
+| Gate | `road:read:Member` | `road:platform:read:Invoice` |
+| Batch | `Road::canMany([...])->in($buId)` | `Road::canMany([...])->forPlatform()->in($buId)` |
+
+`platform:` composes with `input:`, as in `platform:input:business_unit_id`. In a
+batch each check keeps its own target, so `Road::can('read', 'Invoice')->forPlatform()`
+can sit beside a check of Road's, and the batch sends one request per target.
 
 `allowed_*` and `denied_*` reach you in `result()->reason`. `denied_unknown_code`
-means the catalog does not declare the code, which is usually a typo or the wrong
-catalog. A caller who holds nothing at that scope reads `denied_no_grant` instead,
-so a decision can't show a stranger what exists.
+means the target's catalog does not declare the code, which is usually a typo or
+the wrong target, and the SDK logs a warning that names the target and what to try.
+The answer stays a denial. A business unit's catalog holds what Road declares for
+business units: `BusinessUnit` codes live at system level, so
+`Road::can(Action::Read, Subject::BusinessUnit)->in($buId)` reads
+`denied_unknown_code`. A caller who holds nothing at that scope reads
+`denied_no_grant` instead, so a decision can't show a stranger what exists, and no
+warning is logged.
 
 `Road::client()->me()->permissions()` gives the caller's codes for hiding a
 button: `byBusinessUnit` for Road's, `byScope` for each subscription too, with
@@ -323,19 +339,22 @@ ROAD_BRIDGE_GATE=true          # or config/road.php → 'bridges' => ['gate' => 
 ```
 
 ```php
-Gate::allows('road:read:Project', $buId);        // → Road::can('read', 'Project')->in($buId)->check()
-$request->user()->can('road:create:Project', $buId);
+Gate::allows('road:read:Member', $buId);                  // → Road::can('read', 'Member')->in($buId)->check()
+Gate::allows('road:platform:read:Project', $buId);        // → Road::can('read', 'Project')->forPlatform()->in($buId)->check()
+$request->user()->can('road:platform:create:Project', $buId);
 ```
 
 ```blade
-@can('road:update:Project', $buId)
+@can('road:platform:update:Project', $buId)
     <button>Edit</button>
 @endcan
 ```
 
-The ability is `road:{action}:{Subject}` and the **first argument is the business
-unit id**. Anything not prefixed `road:` (or malformed) falls through to your
-app's own gates and policies untouched — the bridge only answers Road abilities.
+The ability is `road:{action}:{Subject}` for Road's catalog at the business unit,
+or `road:platform:{action}:{Subject}` for your platform's at the subscription. The
+**first argument is the business unit id** in both. Anything not prefixed `road:`
+(or malformed) falls through to your app's own gates and policies untouched: the
+bridge only answers Road abilities.
 
 This is a bridge to Laravel's Gate (`B1Road\Laravel\Bridges\GateBridge`). It is
 unrelated to Platform Bridge, the cross-platform capability; for that, see
@@ -347,8 +366,8 @@ Permissions are `"$action:$Subject"` strings. The enum cases match the
 wire form exactly: `Action::Read->value === 'read'`,
 `Subject::Member->value === 'Member'`. The wildcard `'*'` grants
 everything in scope; `manage:Subject` grants every CRUD verb on that
-Subject. Use `->raw('custom:Permission')` on a `Can` builder for
-platform-defined permissions outside Road's canonical set.
+Subject. Use `->raw('read:Document')` on a `Can` builder to pass a code
+built elsewhere. It replaces the code and leaves the target to you.
 
 ## Errors
 
@@ -424,8 +443,8 @@ test instance routed through an in-memory backend. The returned
 `invitationToken`.
 
 **Your platform's permissions.** A BU role answers for Road's codes. Declare your
-own catalog with `withSubscription()`, which is what `Road::can('read', 'Invoice')`
-is checked against:
+own catalog with `withSubscription()`, which is what
+`Road::can('read', 'Invoice')->forPlatform()->in('bu_1')` is checked against:
 
 ```php
 config(['road.platform_id' => 'plat_acme']);
@@ -798,7 +817,7 @@ The full config shape is published to `config/road.php`:
 | `road.inertia.enabled` | Inject `props.road` into Inertia shared props (default true) |
 | `road.debug.header_enabled` | Surface `DecisionTrace` on errors when `X-Road-Debug: 1` |
 | `road.service.*` | Service-to-service credentials for `Road::asService()` |
-| `road.platform_id` | Your platform's `plat_…` (`ROAD_PLATFORM_ID`), which a Bridge presence assertion is bound to |
+| `road.platform_id` | Your platform's `plat_…` (`ROAD_PLATFORM_ID`): what `forPlatform()` checks, and what a Bridge presence assertion is bound to |
 | `road.webhooks.*` | Webhook receiver: `enabled`, `path`, `secret`, `tolerance`, `verify` |
 | `road.platform_bridge.*` | `road.bridge` middleware: `cache_store`, `read_ttl` (60), `write_ttl` (5), `max_staleness` (0, fail-closed), `authorize_timeout` (2), `strict_tenancy`, `strict_acting_user`, `report_attempts` |
 
