@@ -182,3 +182,17 @@ it('sends no session id it does not have', function () {
 
     Http::assertSent(fn (HttpRequest $req) => ! str_contains($req->url(), 'sessionId'));
 });
+
+it('forwards authz/* by default and no longer the retired routes', function () {
+    seedSessionTokens();
+
+    Http::fake([
+        'api.road.test/api/alpha/authz/me/permissions*' => Http::response(['data' => []], 200),
+    ]);
+
+    $this->getJson('/road-api/authz/me/permissions?scopes=scope_1')->assertOk();
+    $this->getJson('/road-api/iam/authorization/me/permissions')->assertStatus(404);
+
+    Http::assertSentCount(1);
+    Http::assertSent(fn (HttpRequest $req) => str_starts_with($req->url(), 'https://api.road.test/api/alpha/authz/me/permissions'));
+});

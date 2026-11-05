@@ -21,8 +21,8 @@ use Throwable;
  * server-side. The browser never sees the JWT.
  *
  * Allowlist:   `road.proxy.allow` (default: organization/*, iam/identity/*,
- *              iam/authorization/*). Paths outside the allowlist return 404
- *              before any upstream call.
+ *              authz/*, me/*). Paths outside the allowlist return 404 before
+ *              any upstream call.
  *
  * Header rules:
  *   - Request:  forwards method, body, content-type, X-Request-Id; injects

@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 use B1Road\Laravel\Http\ProxyPathFilter;
 
-$allow = ['organization/*', 'iam/identity/*', 'iam/authorization/*'];
+$allow = ['organization/*', 'iam/identity/*', 'authz/*'];
 
 it('allows paths matching the allow-list', function () use ($allow) {
     $filter = new ProxyPathFilter($allow);
 
     expect($filter->isAllowed('organization/business-units/bu_1'))->toBeTrue();
     expect($filter->isAllowed('iam/identity/me'))->toBeTrue();
-    expect($filter->isAllowed('iam/authorization/authorize'))->toBeTrue();
+    expect($filter->isAllowed('authz/checks'))->toBeTrue();
 });
 
 it('rejects paths outside the allow-list', function () use ($allow) {
