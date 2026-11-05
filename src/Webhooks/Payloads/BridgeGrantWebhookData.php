@@ -7,8 +7,7 @@ namespace B1Road\Laravel\Webhooks\Payloads;
 use Spatie\LaravelData\Data;
 
 /**
- * Payload for `bridge.grant.{created,revoked}`. Wire shape of
- * `@b1-road/types` `BridgeGrantWebhookData`.
+ * Payload for `bridge.grant.{created,revoked}`, as the API delivers it.
  *
  * **Subscribe to these if you cache authorization answers.** Road's check API
  * is authoritative on every call, but SDK middleware caches its result per
@@ -29,9 +28,11 @@ final class BridgeGrantWebhookData extends Data
         public string $providerPublicId,
         /** The consumer platform the grant is for (`plat_…`). */
         public string $subjectPlatformPublicId,
-        /** The role template the grant was synthesized from. */
-        public string $roleTemplateName,
-        /** The IAM assignment id — the handle `DELETE /bridge/grants/:id` takes. */
+        /** The role the grant holds (`role_…`). */
+        public string $roleId,
+        /** That role's name. */
+        public string $roleName,
+        /** The assignment behind the grant (`asg_…`). */
         public string $grantId,
     ) {}
 }

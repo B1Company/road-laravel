@@ -28,10 +28,10 @@ final class ExtensionInstallWebhookData extends Data
         /** The host platform the extension targets (`plat_…`). */
         public string $platformPublicId,
         /**
-         * The role templates the install grants. Empty on `uninstalled`.
+         * The permission codes the install grants. Empty on `uninstalled`.
          *
          * @var list<string>
          */
-        public array $grantedScopes,
+        public array $grantedPermissions,
     ) {}
 }

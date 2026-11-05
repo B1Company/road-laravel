@@ -688,7 +688,8 @@ it('drops cached contexts when a bridge.grant.revoked webhook arrives', function
     event(new BridgeGrantRevoked('evt_1', '2026-09-25T00:00:00Z', new BridgeGrantWebhookData(
         providerPublicId: 'plat_psp',
         subjectPlatformPublicId: 'plat_consumer',
-        roleTemplateName: 'reader',
+        roleId: 'role_reader',
+        roleName: 'reader',
         grantId: 'grant-1',
     )));
 
@@ -707,7 +708,8 @@ it('does not cache an answer that was in flight when the grant was revoked', fun
             event(new BridgeGrantRevoked('evt_1', '2026-09-25T00:00:00Z', new BridgeGrantWebhookData(
                 providerPublicId: 'plat_psp',
                 subjectPlatformPublicId: 'plat_consumer',
-                roleTemplateName: 'reader',
+                roleId: 'role_reader',
+                roleName: 'reader',
                 grantId: 'grant-1',
             )));
         }
@@ -738,7 +740,8 @@ it('does not keep a degraded marker written across a revocation', function () {
             event(new BridgeGrantRevoked('evt_1', '2026-09-25T00:00:00Z', new BridgeGrantWebhookData(
                 providerPublicId: 'plat_psp',
                 subjectPlatformPublicId: 'plat_consumer',
-                roleTemplateName: 'reader',
+                roleId: 'role_reader',
+                roleName: 'reader',
                 grantId: 'grant-1',
             )));
         }

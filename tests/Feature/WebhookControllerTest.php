@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use B1Road\Laravel\Http\Controllers\WebhookController;
+use B1Road\Laravel\Webhooks\Events\AuthzAssignmentRevoked;
 use B1Road\Laravel\Webhooks\Events\BridgeGrantCreated;
 use B1Road\Laravel\Webhooks\Events\ExtensionInstallUninstalled;
 use B1Road\Laravel\Webhooks\Events\MemberSuspended;
@@ -100,7 +101,8 @@ it('dispatches the right typed event for every event in the catalog', function (
         str_starts_with($event, 'bridge.grant.') => [
             'providerPublicId' => 'plat_provider',
             'subjectPlatformPublicId' => 'plat_subject',
-            'roleTemplateName' => 'Viewer',
+            'roleId' => 'role_viewer',
+            'roleName' => 'Viewer',
             'grantId' => 'asg_1',
         ],
         str_starts_with($event, 'extension.install.') => [
@@ -108,8 +110,22 @@ it('dispatches the right typed event for every event in the catalog', function (
             'installPublicId' => 'exti_1',
             'businessUnitId' => 'bu_1',
             'platformPublicId' => 'plat_host',
-            'grantedScopes' => ['Viewer'],
+            'grantedPermissions' => ['read:Charge'],
         ],
+        str_starts_with($event, 'authz.assignment.') => [
+            'platformPublicId' => 'plat_1',
+            'assignmentId' => 'asg_1',
+            'subjectType' => 'user',
+            'subjectId' => 'u_1',
+            'roleId' => 'role_1',
+            'scopeId' => 'scope_1',
+        ],
+        $event === 'authz.role.changed' => [
+            'platformPublicId' => 'plat_1',
+            'roleId' => 'role_1',
+            'change' => 'composition',
+        ],
+        $event === 'authz.catalog.changed' => ['platformPublicId' => 'plat_1'],
         str_contains($event, 'invitation') => [
             'businessUnitId' => 'bu_1',
             'invitationId' => 'inv_1',
@@ -159,7 +175,8 @@ it('decodes a bridge grant payload, and does not invent a business unit', functi
         'data' => [
             'providerPublicId' => 'plat_provider',
             'subjectPlatformPublicId' => 'plat_subject',
-            'roleTemplateName' => 'Viewer',
+            'roleId' => 'role_viewer',
+            'roleName' => 'Viewer',
             'grantId' => 'asg_1',
         ],
     ]);
@@ -169,7 +186,8 @@ it('decodes a bridge grant payload, and does not invent a business unit', functi
     Event::assertDispatched(BridgeGrantCreated::class, function (BridgeGrantCreated $e) {
         expect($e->data->providerPublicId)->toBe('plat_provider');
         expect($e->data->subjectPlatformPublicId)->toBe('plat_subject');
-        expect($e->data->roleTemplateName)->toBe('Viewer');
+        expect($e->data->roleId)->toBe('role_viewer');
+        expect($e->data->roleName)->toBe('Viewer');
         expect($e->data->grantId)->toBe('asg_1');
         // A grant is cross-platform. A business unit here would route it
         // through the BU fan-out to every co-subscribed platform (API-F4).
@@ -191,7 +209,7 @@ it('decodes an extension install payload, with granted scopes empty on uninstall
             'installPublicId' => 'exti_1',
             'businessUnitId' => 'bu_1',
             'platformPublicId' => 'plat_host',
-            'grantedScopes' => [],
+            'grantedPermissions' => [],
         ],
     ]);
 
@@ -202,7 +220,37 @@ it('decodes an extension install payload, with granted scopes empty on uninstall
         expect($e->data->installPublicId)->toBe('exti_1');
         expect($e->data->businessUnitId)->toBe('bu_1');
         expect($e->data->platformPublicId)->toBe('plat_host');
-        expect($e->data->grantedScopes)->toBe([]);
+        expect($e->data->grantedPermissions)->toBe([]);
+
+        return true;
+    });
+});
+
+it('decodes an authz assignment delivery into its typed event', function () {
+    Event::fake();
+
+    [$raw, $headers] = delivery([
+        'id' => 'evt_authz',
+        'event' => 'authz.assignment.revoked',
+        'timestamp' => '2026-11-05T00:00:00Z',
+        'data' => [
+            'platformPublicId' => 'plat_1',
+            'assignmentId' => 'asg_1',
+            'subjectType' => 'service',
+            'subjectId' => 'svc_1',
+            'roleId' => 'role_1',
+            'scopeId' => 'scope_1',
+        ],
+    ]);
+
+    $this->call('POST', '/road/webhooks', [], [], [], $headers, $raw)->assertOk();
+
+    Event::assertDispatched(AuthzAssignmentRevoked::class, function (AuthzAssignmentRevoked $e) {
+        expect($e->data->assignmentId)->toBe('asg_1');
+        expect($e->data->subjectType)->toBe('service');
+        expect($e->data->subjectId)->toBe('svc_1');
+        expect($e->data->roleId)->toBe('role_1');
+        expect($e->data->scopeId)->toBe('scope_1');
 
         return true;
     });

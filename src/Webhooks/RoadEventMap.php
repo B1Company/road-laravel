@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel\Webhooks;
 
+use B1Road\Laravel\Webhooks\Events\AuthzAssignmentCreated;
+use B1Road\Laravel\Webhooks\Events\AuthzAssignmentRevoked;
+use B1Road\Laravel\Webhooks\Events\AuthzCatalogChanged;
+use B1Road\Laravel\Webhooks\Events\AuthzRoleChanged;
 use B1Road\Laravel\Webhooks\Events\BridgeGrantCreated;
 use B1Road\Laravel\Webhooks\Events\BridgeGrantRevoked;
 use B1Road\Laravel\Webhooks\Events\ExtensionInstallCreated;
@@ -17,6 +21,9 @@ use B1Road\Laravel\Webhooks\Events\MemberReinstated;
 use B1Road\Laravel\Webhooks\Events\MemberRemoved;
 use B1Road\Laravel\Webhooks\Events\MemberRoleChanged;
 use B1Road\Laravel\Webhooks\Events\MemberSuspended;
+use B1Road\Laravel\Webhooks\Payloads\AuthzAssignmentWebhookData;
+use B1Road\Laravel\Webhooks\Payloads\AuthzCatalogChangedWebhookData;
+use B1Road\Laravel\Webhooks\Payloads\AuthzRoleChangedWebhookData;
 use B1Road\Laravel\Webhooks\Payloads\BridgeGrantWebhookData;
 use B1Road\Laravel\Webhooks\Payloads\ExtensionInstallWebhookData;
 use B1Road\Laravel\Webhooks\Payloads\InvitationWebhookData;
@@ -54,6 +61,12 @@ final class RoadEventMap
         'bridge.grant.revoked' => [BridgeGrantRevoked::class, BridgeGrantWebhookData::class],
         'extension.install.created' => [ExtensionInstallCreated::class, ExtensionInstallWebhookData::class],
         'extension.install.uninstalled' => [ExtensionInstallUninstalled::class, ExtensionInstallWebhookData::class],
+
+        // Your platform's own catalog changed: drop what you cached for it.
+        'authz.assignment.created' => [AuthzAssignmentCreated::class, AuthzAssignmentWebhookData::class],
+        'authz.assignment.revoked' => [AuthzAssignmentRevoked::class, AuthzAssignmentWebhookData::class],
+        'authz.role.changed' => [AuthzRoleChanged::class, AuthzRoleChangedWebhookData::class],
+        'authz.catalog.changed' => [AuthzCatalogChanged::class, AuthzCatalogChangedWebhookData::class],
     ];
 
     /**
