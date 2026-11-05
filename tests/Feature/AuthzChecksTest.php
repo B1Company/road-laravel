@@ -457,12 +457,12 @@ describe('the fake answers like the engine', function () {
         expect(Road::can(Action::Read, Subject::Member)->forPlatform()->in('bu_1')->result()->reason)->toBe('denied_unknown_code');
     });
 
-    it('a business unit with no such subscription is a 404, not a denial', function () {
+    it('a business unit with no such subscription reads as a plain no', function () {
         Road::fake(platformScenario());
         $this->actingAsRoadUser('u_owner');
 
-        expect(fn () => Road::can('read', 'Invoice')->forPlatform()->in('bu_unsubscribed')->check())
-            ->toThrow(RoadNotFoundException::class);
+        expect(Road::can('read', 'Invoice')->forPlatform()->in('bu_unsubscribed')->result()->reason)
+            ->toBe('denied_no_grant');
     });
 
     it('an unknown scope id is denied_unknown_scope', function () {

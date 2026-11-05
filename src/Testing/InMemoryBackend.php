@@ -302,6 +302,14 @@ final class InMemoryBackend
             throw $this->apiError(400, '/authz/checks', 'Send between 1 and 100 codes.');
         }
 
+        // A stranger reads a BU that doesn't exist as one they hold nothing in.
+        if ($this->namesNoScope($body)) {
+            return ['status' => 200, 'body' => ['data' => ['results' => array_map(
+                static fn (mixed $code): array => ['code' => (string) $code, 'allowed' => false, 'reason' => 'denied_no_grant'],
+                $codes,
+            )]]];
+        }
+
         $subject = (string) ($body['subjectId'] ?? $userId ?? '');
         $scope = $this->scopeOfCheck($body);
         $roadCatalog = ($body['catalog'] ?? null) === 'road';
@@ -397,12 +405,29 @@ final class InMemoryBackend
         }
 
         $bu = $this->scenario->findBusinessUnit($buId);
-        $platformId = isset($body['platformId']) ? (string) $body['platformId'] : null;
-        if ($bu === null || ($platformId !== null && ! isset($this->scenario->subscriptions[$buId][$platformId]))) {
-            throw $this->apiError(404, '/authz/checks', 'No scope for that business unit and platform.', 'SCOPE_NOT_FOUND');
+        if ($bu === null) {
+            return null;
         }
 
-        return ['bu' => $bu, 'platformId' => $platformId];
+        return ['bu' => $bu, 'platformId' => isset($body['platformId']) ? (string) $body['platformId'] : null];
+    }
+
+    /**
+     * Whether a short form names a BU or subscription that doesn't exist.
+     *
+     * @param  array<string,mixed>  $body
+     */
+    private function namesNoScope(array $body): bool
+    {
+        $buId = $body['businessUnitId'] ?? null;
+        if (! is_string($buId) || $buId === '' || (is_string($body['scopeId'] ?? null) && $body['scopeId'] !== '')) {
+            return false;
+        }
+        if ($this->scenario->findBusinessUnit($buId) === null) {
+            return true;
+        }
+
+        return isset($body['platformId']) && ! isset($this->scenario->subscriptions[$buId][(string) $body['platformId']]);
     }
 
     /**
