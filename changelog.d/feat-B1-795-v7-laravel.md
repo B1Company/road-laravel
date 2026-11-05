@@ -10,6 +10,7 @@
 - **Breaking: webhook payloads match what the API delivers** (B1-795). `BridgeGrantWebhookData` carries `roleId` and `roleName` instead of `roleTemplateName`. `ExtensionInstallWebhookData` carries `grantedPermissions` instead of `grantedScopes`.
 - **`Road::assert()` names the code and the engine's reason in its message** (B1-795).
 - **`Road::fake()` answers like the engine** (B1-795): one catalog per scope, its reason strings, the `400` for a field the API no longer takes, and a `404` for a missing subscription. Fake role ids are now `role_<name>`.
+- **Breaking for test suites: move platform codes in a scenario from `withRole()` to `withSubscription()`** (B1-795), and set `road.platform_id`. A BU role answers for Road's codes only, as on the API, so a check for `read:Project` that a BU role used to pass now reads `denied_unknown_code`.
 
 ### Added
 

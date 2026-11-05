@@ -419,10 +419,9 @@ final class InMemoryBackend
             $held = $this->scenario->subscriptionPermissions($subject, $buId, $platformId);
             $hasAll = $hasAll || in_array(Permission::WILDCARD, $held, true);
         } else {
-            $declared = array_merge(...array_values(['' => []] + ($this->scenario->rolesByBu[$buId] ?? [])));
-            if (Permission::isRoadCode($code)) {
-                $declared[] = $code;
-            }
+            // Road's catalog declares its own codes and nothing else, whatever
+            // a scenario's BU roles list.
+            $declared = Permission::isRoadCode($code) ? [$code] : [];
         }
 
         if (! $this->satisfiedBy($declared, $code)) {
@@ -478,6 +477,9 @@ final class InMemoryBackend
 
         $codes = [];
         foreach ($held as $code) {
+            if ($scope['platformId'] === null && ! Permission::isRoadCode($code)) {
+                continue;
+            }
             $codes[$code] = true;
             [$action, $noun] = array_pad(explode(':', $code, 2), 2, '');
             if ($action === 'manage') {

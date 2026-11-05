@@ -286,6 +286,20 @@ describe('the fake answers like the engine', function () {
         expect(Road::can(Action::Read, Subject::Member)->inScope('bu_1')->result()->reason)->toBe('denied_unknown_scope');
     });
 
+    it('a platform code on a BU role reads as unknown, as the API would', function () {
+        Road::fake(
+            RoadScenario::make()
+                ->withUser('u_1')
+                ->withBusinessUnit('bu_1')
+                ->withRole('bu_1', 'Mixed', permissions: ['read:Project', 'read:Member'])
+                ->withMember('bu_1', 'u_1', roles: ['Mixed']),
+        );
+        $this->actingAsRoadUser('u_1');
+
+        expect(Road::can('read', 'Project')->inScope('scope_bu_1')->result()->reason)->toBe('denied_unknown_code');
+        expect(Road::client()->me()->permissions()->byBusinessUnit)->toBe(['bu_1' => ['read:Member']]);
+    });
+
     it('catalog road asks about Road codes at a subscription', function () {
         Road::fake(platformScenario());
         $this->actingAsRoadUser('u_admin');
