@@ -17,6 +17,7 @@ final class ImportCatalogDto extends Data
         public array $roles,
         public ?bool $prune = null,
         public ?bool $dryRun = null,
+        public ?string $version = null,
     ) {
     }
 }
