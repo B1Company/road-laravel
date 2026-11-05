@@ -20,7 +20,7 @@ final class RegisterExtensionDto extends Data
         public ?string $uiEntryUrl = null,
         public ?string $webhookUrl = null,
         public ?array $redirectUris = null,
-        public ?array $requestedScopes = null,
+        public ?array $requestedPermissions = null,
         public ?string $description = null,
         public ?string $iconUrl = null,
     ) {

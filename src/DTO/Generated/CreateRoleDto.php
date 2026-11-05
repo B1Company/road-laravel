@@ -14,10 +14,8 @@ final class CreateRoleDto extends Data
 {
     public function __construct(
         public string $name,
-        public array $permissions,
         public ?string $description = null,
-        public ?bool $isSystem = null,
-        public ?array $metadata = null,
+        public ?array $permissionIds = null,
         public ?string $cloneFromRoleId = null,
     ) {
     }

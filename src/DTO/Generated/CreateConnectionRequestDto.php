@@ -14,7 +14,7 @@ final class CreateConnectionRequestDto extends Data
 {
     public function __construct(
         public string $providerPlatformPublicId,
-        public string $roleTemplateName,
+        public string $roleId,
     ) {
     }
 }

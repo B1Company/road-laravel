@@ -15,8 +15,6 @@ final class UpdateRoleDto extends Data
     public function __construct(
         public ?string $name = null,
         public ?string $description = null,
-        public ?array $permissions = null,
-        public ?array $metadata = null,
     ) {
     }
 }

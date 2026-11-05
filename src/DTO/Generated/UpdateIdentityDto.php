@@ -15,9 +15,6 @@ final class UpdateIdentityDto extends Data
     public function __construct(
         public ?string $name = null,
         public ?string $slug = null,
-        public ?array $permissionTemplate = null,
-        public ?array $roleTemplate = null,
-        public ?array $serviceUserBinding = null,
         public ?float $version = null,
     ) {
     }

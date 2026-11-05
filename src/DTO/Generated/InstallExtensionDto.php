@@ -13,7 +13,7 @@ use Spatie\LaravelData\Data;
 final class InstallExtensionDto extends Data
 {
     public function __construct(
-        public ?array $consentedScopes = null,
+        public ?array $consentedPermissions = null,
     ) {
     }
 }

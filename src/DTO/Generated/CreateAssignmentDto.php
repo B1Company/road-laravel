@@ -16,7 +16,6 @@ final class CreateAssignmentDto extends Data
         public string $subjectType,
         public string $subjectId,
         public string $roleId,
-        public string $scopeId,
         public ?string $expiresAt = null,
     ) {
     }
