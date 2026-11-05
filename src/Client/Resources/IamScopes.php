@@ -25,12 +25,17 @@ final class IamScopes
         return Scope::from($this->unwrap($body));
     }
 
-    public function lookup(string $type, string $externalId): Scope
+    /**
+     * A subscription's external id repeats across business units. Send
+     * `$parentScopeId` when you can read more than one match.
+     */
+    public function lookup(string $type, string $externalId, ?string $parentScopeId = null): Scope
     {
-        $body = $this->http->request('GET', '/authz/scopes/lookup', null, [
+        $body = $this->http->request('GET', '/authz/scopes/lookup', null, array_filter([
             'type' => $type,
             'externalId' => $externalId,
-        ]);
+            'parentScopeId' => $parentScopeId,
+        ], static fn (?string $value): bool => $value !== null));
 
         return Scope::from($this->unwrap($body));
     }
