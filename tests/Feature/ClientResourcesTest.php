@@ -6,7 +6,6 @@ use B1Road\Laravel\Auth\RoadUser;
 use B1Road\Laravel\Client\RoadClient;
 use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\DTO\Assignment;
-use B1Road\Laravel\DTO\AuthorizeResult;
 use B1Road\Laravel\DTO\BusinessUnitWithIncludes;
 use B1Road\Laravel\DTO\Invitation;
 use B1Road\Laravel\DTO\Member;
@@ -210,28 +209,6 @@ it('accepts and rejects invitations by id at the top level', function () {
     $client = seedRoadClient();
     expect($client->invitations()->accept('inv_1', 'link-token')->status)->toBe('accepted');
     expect($client->invitations()->reject('inv_2')->status)->toBe('rejected');
-});
-
-it('runs IAM authorize and batch checks', function () {
-    Http::fake([
-        'api.road.test/api/alpha/iam/authorization/authorize' => Http::response(['data' => ['allowed' => true, 'reason' => 'granted']]),
-        'api.road.test/api/alpha/iam/authorization/authorize/batch' => Http::response(['data' => ['results' => [
-            ['permission' => 'read:Member', 'allowed' => true],
-            ['permission' => 'delete:Member', 'allowed' => false],
-        ]]]),
-    ]);
-
-    $iam = seedRoadClient()->iam();
-
-    $single = $iam->authorize(['subjectType' => 'user', 'subjectId' => 'u_1', 'scopeId' => 'scope_1', 'permission' => 'read:Member']);
-    expect($single)->toBeInstanceOf(AuthorizeResult::class);
-    expect($single->allowed)->toBeTrue();
-    expect($single->evaluatedScopes)->toBe([]); // live API omits it
-
-    $batch = $iam->authorizeBatch(['subjectType' => 'user', 'subjectId' => 'u_1', 'scopeId' => 'scope_1', 'permissions' => ['read:Member', 'delete:Member']]);
-    expect($batch->results)->toHaveCount(2);
-    expect($batch->results[0]->allowed)->toBeTrue();
-    expect($batch->results[1]->allowed)->toBeFalse();
 });
 
 it('manages scopes and assignments', function () {

@@ -9,8 +9,13 @@ use B1Road\Laravel\DTO\Membership;
 use B1Road\Laravel\DTO\Role;
 use B1Road\Laravel\Exceptions\RoadAuthnException;
 use B1Road\Laravel\Exceptions\RoadNotFoundException;
+use B1Road\Laravel\Facades\Road;
+use B1Road\Laravel\Testing\ActsAsRoadUser;
+use B1Road\Laravel\Testing\RoadScenario;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
+
+uses(ActsAsRoadUser::class);
 
 function seedAuthedContext(): void
 {
@@ -125,14 +130,16 @@ it('throws RoadAuthnException when called outside a road-protected context', fun
         ->toThrow(RoadAuthnException::class);
 });
 
-it('permissions() resolves BU->scope, calls the scoped endpoint, and keys by BU id', function () {
+it('permissions() reads every BU and subscription scope and keys by BU id', function () {
     seedAuthedContext();
 
     Http::fake([
         'api.road.test/api/alpha/me/business-units' => Http::response([
             'data' => [
                 'memberships' => [
-                    ['businessUnit' => ['id' => 'bu_1', 'name' => 'B1', 'slug' => 'b1'], 'status' => 'active', 'joinedAt' => '', 'roles' => [], 'platformSubscriptions' => []],
+                    ['businessUnit' => ['id' => 'bu_1', 'name' => 'B1', 'slug' => 'b1'], 'status' => 'active', 'joinedAt' => '', 'roles' => [], 'platformSubscriptions' => [
+                        ['platformId' => 'plat_1', 'slug' => 'one', 'scopeId' => 'scope_sub', 'roles' => []],
+                    ]],
                 ],
                 'pendingInvitations' => [],
             ],
@@ -144,25 +151,29 @@ it('permissions() resolves BU->scope, calls the scoped endpoint, and keys by BU 
                 'createdAt' => '', 'iamScopeId' => 'scope_1',
             ],
         ], 200),
-        'api.road.test/api/alpha/iam/authorization/me/permissions*' => Http::response([
+        'api.road.test/api/alpha/authz/me/permissions*' => Http::response([
             'data' => [
-                'scope_1' => [
-                    ['action' => 'manage', 'subject' => 'Project'],
-                    ['action' => '*', 'subject' => '*'],
-                ],
+                ['scopeId' => 'scope_1', 'all' => false, 'codes' => ['manage:Member', 'read:Member']],
+                ['scopeId' => 'scope_sub', 'all' => true, 'codes' => []],
             ],
         ], 200),
     ]);
+    Http::preventStrayRequests();
 
     $perms = app(RoadClient::class)->me()->permissions();
 
     expect($perms->byBusinessUnit)->toBe([
-        'bu_1' => ['manage:Project', '*'],
+        'bu_1' => ['manage:Member', 'read:Member'],
+    ]);
+    // The subscription's scope comes back too, and `all` reads as `*`.
+    expect($perms->byScope)->toBe([
+        'scope_1' => ['manage:Member', 'read:Member'],
+        'scope_sub' => ['*'],
     ]);
 
-    // Hits the scoped authorization endpoint with the resolved scope id.
-    Http::assertSent(fn (HttpRequest $req) => str_contains($req->url(), '/api/alpha/iam/authorization/me/permissions')
-        && str_contains($req->url(), 'scopes=scope_1'));
+    // One read of both scopes.
+    Http::assertSent(fn (HttpRequest $req) => str_contains($req->url(), '/api/alpha/authz/me/permissions')
+        && $req->data() === ['scopes' => 'scope_1,scope_sub']);
     // The non-existent bare `/me/permissions` must never be called.
     Http::assertNotSent(fn (HttpRequest $req) => str_contains($req->url(), 'alpha/me/permissions'));
 });
@@ -218,4 +229,48 @@ it('lists platform roles by resolving the subscription then its scope roles (par
     expect($roles[0]->name)->toBe('Platform Admin');
     Http::assertSent(fn (HttpRequest $req) => str_contains($req->url(), '/subscriptions/plat_gw'));
     Http::assertSent(fn (HttpRequest $req) => str_contains($req->url(), '/scopes/scope_plat_1/roles'));
+});
+
+it('permissions() splits more scopes than the API takes at once', function () {
+    seedAuthedContext();
+
+    $subscriptions = array_map(
+        fn (int $i) => ['platformId' => 'plat_'.$i, 'slug' => 'p'.$i, 'scopeId' => 'scope_sub_'.$i, 'roles' => []],
+        range(1, 50),
+    );
+    Http::fake([
+        'api.road.test/api/alpha/me/business-units' => Http::response(['data' => [
+            'memberships' => [['businessUnit' => ['id' => 'bu_1', 'name' => 'B1', 'slug' => 'b1'], 'status' => 'active', 'joinedAt' => '', 'roles' => [], 'platformSubscriptions' => $subscriptions]],
+            'pendingInvitations' => [],
+        ]]),
+        'api.road.test/api/alpha/organization/business-units/bu_1' => Http::response(['data' => ['id' => 'bu_1', 'name' => 'B1', 'slug' => 'b1', 'status' => 'active', 'memberCount' => 1, 'memberLimit' => null, 'joinCode' => null, 'createdAt' => '', 'iamScopeId' => 'scope_1']]),
+        'api.road.test/api/alpha/authz/me/permissions*' => Http::response(['data' => []]),
+    ]);
+    Http::preventStrayRequests();
+
+    app(RoadClient::class)->me()->permissions();
+
+    $sizes = Http::recorded()
+        ->filter(fn (array $pair) => str_contains($pair[0]->url(), '/authz/me/permissions'))
+        ->map(fn (array $pair) => count(explode(',', $pair[0]->data()['scopes'])))
+        ->values()
+        ->all();
+    expect($sizes)->toBe([50, 1]);
+});
+
+it('permissions() serves a platform role through the fake, under its subscription scope', function () {
+    Road::fake(
+        RoadScenario::make()
+            ->withUser('u_1')
+            ->withBusinessUnit('bu_1')
+            ->withRole('bu_1', 'Reader', permissions: ['read:Member'])
+            ->withMember('bu_1', 'u_1', roles: ['Reader'])
+            ->withSubscription('bu_1', 'plat_acme', scopeId: 'scope_sub', roles: ['Admin' => ['manage:Invoice']], members: ['u_1' => ['Admin']]),
+    );
+    $this->actingAsRoadUser('u_1');
+
+    $perms = Road::client()->me()->permissions();
+
+    expect($perms->byBusinessUnit)->toBe(['bu_1' => ['read:Member']]);
+    expect($perms->byScope['scope_sub'])->toBe(['manage:Invoice', 'create:Invoice', 'read:Invoice', 'update:Invoice', 'delete:Invoice']);
 });

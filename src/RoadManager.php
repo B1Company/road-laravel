@@ -291,6 +291,9 @@ final class RoadManager
      * the same way they do in `@b1-road/nestjs`:
      *
      *   Road::can(Action::Create, 'Project')->in($buId)->check();
+     *
+     * A subject outside Road's own set is checked in your platform's catalog,
+     * at the business unit's subscription to `road.platform_id`.
      */
     public function can(Action|string $action, Subject|string $subject): Can
     {
@@ -299,12 +302,13 @@ final class RoadManager
             $this->context,
             $action,
             $subject,
+            (string) $this->container->make(ConfigRepository::class)->get('road.platform_id', ''),
         );
     }
 
     /**
-     * Build a batched permission check. All `$checks` must share a single
-     * scope id, set via `->in($scopeId)` on the returned batch.
+     * Build a batched permission check. All `$checks` share one business
+     * unit, set via `->in($buId)` on the returned batch.
      *
      *   $allowed = Road::canMany([
      *       Road::can(Action::Read, Subject::Member),
@@ -331,10 +335,10 @@ final class RoadManager
      * Assert the check passes; throws RoadAuthzException with the
      * DecisionTrace on deny.
      *
-     * Implementation: 1 round-trip on allow (the cheap `result()` call),
-     * 2 round-trips on deny (the deny verdict + a debug-flag fetch to
-     * build the trace). Resilient to backends that don't honor the
-     * debug flag — the exception still throws with a null trace.
+     * Implementation: 1 round-trip on allow (the cheap `result()` call).
+     * A deny also builds the trace, which takes the scope id, the explain
+     * route and the caller's permissions. If that fails the exception
+     * still throws, with a null trace.
      */
     public function assert(Can $check): void
     {
@@ -352,7 +356,7 @@ final class RoadManager
         }
 
         throw new RoadAuthzException(
-            message: 'Permission denied: '.($result->reason !== '' ? $result->reason : 'no grant matches the required permission.'),
+            message: "Permission denied: {$result->code} ({$result->reason}).",
             errorCode: 'permission_denied',
             trace: $trace,
         );

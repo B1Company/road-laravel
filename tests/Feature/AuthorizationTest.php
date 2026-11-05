@@ -80,7 +80,8 @@ it('Road::canMany batches multiple checks into one round-trip', function () {
     ])->in('bu_1')->resolve();
 
     expect($allowed)->toBe([true, false, true]);
-    $fake->assertCalled('POST', '/iam/authorization/authorize/batch');
+    $fake->assertCallCount(1);
+    $fake->assertCalled('POST', '/authz/checks');
 });
 
 it('the road.permission middleware allows when the role grants the permission', function () {
@@ -217,7 +218,7 @@ it('manage:Subject grants every CRUD verb on that subject', function () {
     expect(Road::can(Action::Update, Subject::Role)->in('bu_m')->check())->toBeFalse();
 });
 
-it('Road::client()->me()->permissions() maps scope tuples to strings keyed by BU id', function () {
+it('Road::client()->me()->permissions() keys the codes back by BU id', function () {
     Road::fake(scenarioWithReader());
     $this->actingAsRoadUser('u_reader');
 
@@ -229,16 +230,14 @@ it('Road::client()->me()->permissions() maps scope tuples to strings keyed by BU
     ]);
 });
 
-it('Road::can()->in($buId) resolves the BU to its IAM scope before authorizing', function () {
+it('Road::can()->in($buId) sends the business unit, with no lookup first', function () {
     $fake = Road::fake(scenarioWithReader());
     $this->actingAsRoadUser('u_reader');
 
-    // The fake matches the authorize call ONLY by iamScopeId, so a true
-    // verdict proves the SDK resolved bu_1 -> its scope first.
     expect(Road::can(Action::Read, Subject::Member)->in('bu_1')->check())->toBeTrue();
 
-    $fake->assertCalled('GET', '/organization/business-units/bu_1');
-    $fake->assertCalled('POST', '/iam/authorization/authorize');
+    $fake->assertCallCount(1);
+    $fake->assertCalled('POST', '/authz/checks');
 });
 
 it('Road::can()->trace() sources grants from the caller effective permissions', function () {
@@ -259,16 +258,20 @@ it('Road::can()->trace() sources grants from the caller effective permissions', 
 
 function scenarioWithProjectRoles(): RoadScenario
 {
+    config(['road.platform_id' => 'plat_acme']);
+
     return RoadScenario::make()
         ->withUser('u_admin', email: 'admin@b1.app')
         ->withUser('u_viewer', email: 'viewer@b1.app')
         ->withUser('u_guest', email: 'guest@b1.app')
         ->withBusinessUnit('bu_1')
-        ->withRole('bu_1', 'Admin', permissions: ['manage:Project'])
-        ->withRole('bu_1', 'Viewer', permissions: ['read:Project'])
-        ->withMember('bu_1', 'u_admin', roles: ['Admin'])
-        ->withMember('bu_1', 'u_viewer', roles: ['Viewer'])
-        ->withMember('bu_1', 'u_guest', roles: []);
+        ->withMember('bu_1', 'u_admin', roles: [])
+        ->withMember('bu_1', 'u_viewer', roles: [])
+        ->withMember('bu_1', 'u_guest', roles: [])
+        ->withSubscription('bu_1', 'plat_acme',
+            roles: ['Admin' => ['manage:Project'], 'Viewer' => ['read:Project']],
+            members: ['u_admin' => ['Admin'], 'u_viewer' => ['Viewer']],
+        );
 }
 
 it('Road::can() accepts a platform-defined string subject', function () {

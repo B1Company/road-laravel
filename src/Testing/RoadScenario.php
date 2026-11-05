@@ -9,7 +9,7 @@ namespace B1Road\Laravel\Testing;
  * — same shape so tests can be ported between SDKs by transliteration.
  *
  * Surface: `withUser`, `withBusinessUnit`, `withMember`, `withRole`,
- * `withInvitation`. Members are derived from declared memberships and roles
+ * `withSubscription`, `withInvitation`. Members are derived from declared memberships and roles
  * from `withRole`, so the fake serves `members()` / `roles()` listings without
  * extra wiring.
  */
@@ -33,6 +33,15 @@ final class RoadScenario
      * @var array<string, array<string, list<string>>>
      */
     public array $rolesByBu = [];
+
+    /**
+     * Platform subscriptions per BU, keyed by platform id: the scope a platform
+     * code is checked at, the roles of that platform's catalog, and who holds
+     * them.
+     *
+     * @var array<string, array<string, array{platformId:string, slug:string, scopeId:string, roles:array<string, list<string>>, members:array<string, list<string>>}>>
+     */
+    public array $subscriptions = [];
 
     /**
      * Invitations per BU.
@@ -160,6 +169,40 @@ final class RoadScenario
     }
 
     /**
+     * Subscribe a BU to a platform and declare its catalog, so a test proves
+     * your platform's permissions allow and deny as designed. A grant walks
+     * down the tree only as `*`: a BU Owner passes here, but a BU role's literal
+     * code never answers for a code of this catalog.
+     *
+     * @param  array<string, list<string>>  $roles  Role name to its codes.
+     * @param  array<string, list<string>>  $members  User id to the role names it holds.
+     */
+    public function withSubscription(
+        string $buId,
+        string $platformId,
+        ?string $slug = null,
+        ?string $scopeId = null,
+        array $roles = [],
+        array $members = [],
+    ): self {
+        if (! isset($this->businessUnits[$buId])) {
+            throw new \InvalidArgumentException(
+                "Business unit $buId not declared. Call withBusinessUnit() first."
+            );
+        }
+
+        $this->subscriptions[$buId][$platformId] = [
+            'platformId' => $platformId,
+            'slug' => $slug ?? $platformId,
+            'scopeId' => $scopeId ?? 'sub_'.$platformId.'_'.$buId,
+            'roles' => $roles,
+            'members' => $members,
+        ];
+
+        return $this;
+    }
+
+    /**
      * Declare a pending (or otherwise-stated) invitation on a BU so the fake
      * can serve `businessUnits($buId)->invitations()` listings. Accepting it
      * takes its link token: pass `$token` to choose it, or read the default
@@ -232,7 +275,23 @@ final class RoadScenario
     /** @return array{userId:string, memberships:list<array<string,mixed>>} */
     public function memberships(string $userId): array
     {
-        return $this->userBusinessUnits[$userId] ?? ['userId' => $userId, 'memberships' => []];
+        $mine = $this->userBusinessUnits[$userId] ?? ['userId' => $userId, 'memberships' => []];
+        foreach ($mine['memberships'] as $i => $membership) {
+            $mine['memberships'][$i]['platformSubscriptions'] = array_values(array_map(
+                fn (array $sub): array => [
+                    'platformId' => $sub['platformId'],
+                    'slug' => $sub['slug'],
+                    'scopeId' => $sub['scopeId'],
+                    'roles' => array_map(
+                        fn (string $r): array => ['id' => 'role_'.$r, 'name' => $r],
+                        $sub['members'][$userId] ?? [],
+                    ),
+                ],
+                $this->subscriptions[$membership['businessUnit']['id']] ?? [],
+            ));
+        }
+
+        return $mine;
     }
 
     /**
@@ -256,6 +315,28 @@ final class RoadScenario
         $perms = [];
         foreach ($rolesOnBu as $roleName) {
             foreach ($this->rolesByBu[$buId][$roleName] ?? [] as $p) {
+                $perms[$p] = true;
+            }
+        }
+
+        return array_keys($perms);
+    }
+
+    /**
+     * The codes a user's roles of a platform's catalog give at the subscription.
+     *
+     * @return list<string>
+     */
+    public function subscriptionPermissions(string $userId, string $buId, string $platformId): array
+    {
+        $sub = $this->subscriptions[$buId][$platformId] ?? null;
+        if ($sub === null) {
+            return [];
+        }
+
+        $perms = [];
+        foreach ($sub['members'][$userId] ?? [] as $roleName) {
+            foreach ($sub['roles'][$roleName] ?? [] as $p) {
                 $perms[$p] = true;
             }
         }

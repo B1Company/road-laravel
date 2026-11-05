@@ -10,9 +10,9 @@ namespace B1Road\Laravel\Authorization;
  * (PascalCase) so `Subject::Member->value === 'Member'`.
  *
  * Custom platform-defined subjects are intentionally not modelled as
- * enum cases — the wire allows arbitrary strings, and integrators
- * extending the algebra pass strings directly to `Can::raw()` (see
- * `Can`). The enum covers the canonical Road set.
+ * enum cases: the wire allows arbitrary strings, and integrators pass
+ * them as strings (see `Can`). A subject here is what makes a check
+ * Road's own; any other subject is checked in your platform's catalog.
  */
 enum Subject: string
 {

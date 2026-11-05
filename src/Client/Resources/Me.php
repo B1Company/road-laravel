@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace B1Road\Laravel\Client\Resources;
 
+use B1Road\Laravel\Authorization\Permission;
 use B1Road\Laravel\Client\HttpTransportInterface;
 use B1Road\Laravel\DTO\CurrentUser;
 use B1Road\Laravel\DTO\Membership;
@@ -21,8 +22,8 @@ use B1Road\Laravel\Exceptions\RoadApiException;
 final class Me
 {
     /**
-     * Max scope ids per `/iam/authorization/me/permissions?scopes=` request.
-     * Mirrors the API's `MAX_BULK_SCOPES` cap (it 400s above this).
+     * Max scope ids per `/authz/me/permissions?scopes=` request. Mirrors the
+     * API's cap (it 400s above this).
      */
     private const MAX_BULK_SCOPES = 50;
 
@@ -129,77 +130,70 @@ final class Me
         return new EduzzProductCollection($this->http);
     }
 
+    /**
+     * The caller's codes at each business unit and subscription they belong to,
+     * with `manage` expanded. `*` stands for a role that holds them all.
+     *
+     * Good for hiding a button, not for enforcing anything: `*` also reads
+     * "yes" for a code the catalog never declared. Enforce with `Road::can()`.
+     */
     public function permissions(): MyPermissions
     {
-        // Road exposes effective permissions per IAM **scope** (not per BU)
-        // and returns `(action, subject)` tuples — there is no `/me/permissions`
-        // route. Mirror @b1-road/nestjs + @b1-road/react: resolve each
-        // membership's BU to its `iamScopeId`, bulk-fetch the scope-keyed
-        // endpoint (chunked to the API's cap), then flatten the tuples to
-        // `"action:Subject"` strings keyed back by BU id (`*:*` → `"*"`).
-        // The membership summary omits the scope id, so resolve each BU's
-        // `iamScopeId` from its detail. Iterating the DataCollection directly
-        // keeps this empty-safe — no memberships means no BU fetches and an
-        // empty result.
+        // `/me/business-units` carries each subscription's scope id but not the
+        // BU's own, so read that from the BU detail. Iterating the
+        // DataCollection directly keeps this empty-safe: no memberships means
+        // no BU fetches and an empty result.
         /** @var array<string,string> $scopeIdByBu */
         $scopeIdByBu = [];
+        $subscriptionScopeIds = [];
         foreach ($this->businessUnits()->memberships as $membership) {
             $buId = $membership->businessUnit->id;
             $detail = $this->http->request('GET', '/organization/business-units/'.rawurlencode($buId));
             $detailData = is_array($detail['data'] ?? null) ? $detail['data'] : $detail;
             $scopeIdByBu[$buId] = (string) ($detailData['iamScopeId'] ?? '');
+            foreach ($membership->platformSubscriptions as $subscription) {
+                $subscriptionScopeIds[] = $subscription->scopeId;
+            }
         }
         if ($scopeIdByBu === []) {
-            return new MyPermissions(byBusinessUnit: []);
+            return new MyPermissions(byBusinessUnit: [], byScope: []);
         }
 
         // One bulk call per chunk of <= MAX_BULK_SCOPES scope ids (the API
-        // 400s above the cap). Response: `{ '<scopeId>': [{action,subject}] }`.
-        $uniqueScopeIds = array_values(array_unique(array_filter(array_values($scopeIdByBu))));
-        /** @var array<string, list<array<string,mixed>>> $byScope */
+        // 400s above the cap). It answers a list of `{ scopeId, all, codes }`.
+        $scopeIds = array_values(array_unique(array_filter([...array_values($scopeIdByBu), ...$subscriptionScopeIds])));
+        /** @var array<string, list<string>> $byScope */
         $byScope = [];
-        foreach (array_chunk($uniqueScopeIds, self::MAX_BULK_SCOPES) as $chunkScopeIds) {
-            $resp = $this->http->request('GET', '/iam/authorization/me/permissions', null, [
-                'scopes' => implode(',', $chunkScopeIds),
-            ]);
-            $respData = is_array($resp['data'] ?? null) ? $resp['data'] : $resp;
-            foreach ($respData as $scopeId => $tuples) {
-                $byScope[(string) $scopeId] = is_array($tuples) ? $tuples : [];
+        foreach (array_chunk($scopeIds, self::MAX_BULK_SCOPES) as $chunk) {
+            $resp = $this->http->request('GET', '/authz/me/permissions', null, ['scopes' => implode(',', $chunk)]);
+            foreach ((array) ($resp['data'] ?? []) as $effective) {
+                if (is_array($effective)) {
+                    $byScope[(string) ($effective['scopeId'] ?? '')] = self::codesOf($effective);
+                }
             }
         }
 
         /** @var array<string, list<string>> $byBusinessUnit */
         $byBusinessUnit = [];
         foreach ($scopeIdByBu as $buId => $scopeId) {
-            $byBusinessUnit[$buId] = self::tuplesToStrings($byScope[$scopeId] ?? []);
+            $byBusinessUnit[$buId] = $byScope[$scopeId] ?? [];
         }
 
-        return new MyPermissions(byBusinessUnit: $byBusinessUnit);
+        return new MyPermissions(byBusinessUnit: $byBusinessUnit, byScope: $byScope);
     }
 
     /**
-     * Flatten the API's `(action, subject)` tuples into `"action:Subject"`
-     * strings, collapsing the `*:*` wildcard to `"*"`. Each non-array element
-     * is skipped, so the loosely-typed wire array is accepted as-is.
+     * One scope's codes, `*` for a holder of them all.
      *
-     * @param  array<mixed>  $tuples
+     * @param  array<mixed>  $effective  `{ scopeId, all, codes }`
      * @return list<string>
      */
-    private static function tuplesToStrings(array $tuples): array
+    private static function codesOf(array $effective): array
     {
-        $out = [];
-        foreach ($tuples as $tuple) {
-            if (! is_array($tuple)) {
-                continue;
-            }
-            $action = (string) ($tuple['action'] ?? '');
-            $subject = (string) ($tuple['subject'] ?? '');
-            if ($action === '') {
-                continue;
-            }
-            $out[] = ($action === '*' && $subject === '*') ? '*' : $action.':'.$subject;
+        if (($effective['all'] ?? false) === true) {
+            return [Permission::WILDCARD];
         }
 
-        return $out;
+        return array_values(array_filter((array) ($effective['codes'] ?? []), 'is_string'));
     }
 }

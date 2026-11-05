@@ -14,14 +14,17 @@ use B1Road\Laravel\Exceptions\RoadNotFoundException;
  * `apps/sdks/road-nestjs/src/testing/in-memory-backend.ts`.
  *
  * Matches `method + path` against a set of handlers and serves data from the
- * test scenario. The authorize verdict logic mirrors Road's real engine for
- * the basic case — `manage:X` expands to CRUD, `*` is wildcard. Read paths
+ * test scenario. The check logic mirrors Road's engine for the basic case: each
+ * scope has one catalog, `manage:X` covers CRUD, `*` holds them all. Read paths
  * (members, roles, invitations, effective permissions) are served from the
  * scenario; mutations acknowledge with a plausible echo so an integrator's
  * code under test runs without the network.
  */
 final class InMemoryBackend
 {
+    /** What `manage:X` implies, as the engine expands it. */
+    private const MANAGE_IMPLIES = ['create', 'read', 'update', 'delete'];
+
     /** @var list<array{method:string, path:string, body:?array<string,mixed>}> */
     public array $calls = [];
 
@@ -131,17 +134,17 @@ final class InMemoryBackend
             ]];
         }
 
-        if ($method === 'GET' && $path === '/iam/authorization/me/permissions') {
+        if ($method === 'GET' && $path === '/authz/me/permissions') {
             return $this->handleMyPermissions($query ?? [], $userId);
         }
 
         // ── Authorization checks ───────────────────────────────────────────
-        if ($method === 'POST' && $path === '/iam/authorization/authorize/batch') {
-            return $this->handleAuthorizeBatch($body ?? [], $userId);
+        if ($method === 'POST' && $path === '/authz/checks') {
+            return $this->handleCheck($body ?? [], $userId);
         }
 
-        if ($method === 'POST' && $path === '/iam/authorization/authorize') {
-            return $this->handleAuthorize($body ?? [], $userId);
+        if ($method === 'GET' && $path === '/authz/checks/explain') {
+            return $this->handleExplain($query ?? [], $userId);
         }
 
         // ── IAM control plane: scopes, roles, assignments ──────────────────
@@ -229,11 +232,13 @@ final class InMemoryBackend
         }
 
         if ($method === 'GET' && preg_match('#^/organization/business-units/([^/]+)/subscriptions/([^/]+)$#', $path, $m) === 1) {
+            $sub = $this->scenario->subscriptions[$m[1]][$m[2]] ?? null;
+
             return ['status' => 200, 'body' => ['data' => [
                 'subscriptionId' => 'sub_'.$m[2],
                 'platformId' => $m[2],
-                'slug' => $m[2],
-                'scopeId' => 'scope_'.$m[2],
+                'slug' => $sub['slug'] ?? $m[2],
+                'scopeId' => $sub['scopeId'] ?? 'scope_'.$m[2],
             ]]];
         }
 
@@ -304,157 +309,266 @@ final class InMemoryBackend
     }
 
     /**
-     * The caller is the token-derived user (`$userId`), mirroring the real API —
-     * the SDK no longer forwards a `subjectId`.
+     * `POST /authz/checks`. The caller is the token-derived user, unless the
+     * body names a subject. Answers like the API: a business unit with no such
+     * subscription is a 404, an unknown scope id a `denied_unknown_scope`.
      *
      * @param  array<string,mixed>  $body
      * @return array{status:int, body:array<string,mixed>}
      */
-    private function handleAuthorize(array $body, ?string $userId): array
+    private function handleCheck(array $body, ?string $userId): array
     {
-        $subjectId = (string) ($userId ?? '');
-        $scopeId = (string) ($body['scopeId'] ?? '');
-        $required = (string) ($body['permission'] ?? '');
+        $codes = $body['codes'] ?? null;
+        if (! is_array($codes) || $codes === [] || count($codes) > 100) {
+            throw $this->apiError(400, '/authz/checks', 'Send between 1 and 100 codes.');
+        }
 
-        $verdict = $this->verdict($subjectId, $scopeId, $required);
-        $bu = $this->resolveBuFromScope($scopeId);
-        $rolesOnBu = $bu === null
-            ? []
-            : $this->rolesUserHasOnBu($subjectId, (string) $bu['id']);
-
-        $reason = $verdict
-            ? sprintf('granted: %s held by roles [%s]', $required, implode(', ', $rolesOnBu))
-            : sprintf('no role grants %s', $required);
-
-        // The real /authorize endpoint returns only { allowed, reason } — the
-        // engine exposes neither evaluatedScopes nor a role-attributed
-        // decision (NFR-14). The SDK builds its DecisionTrace from the
-        // caller's effective permissions (/me/permissions), not from here.
-        return ['status' => 200, 'body' => ['data' => [
-            'allowed' => $verdict,
-            'reason' => $reason,
-        ]]];
-    }
-
-    /**
-     * @param  array<string,mixed>  $body
-     * @return array{status:int, body:array<string,mixed>}
-     */
-    private function handleAuthorizeBatch(array $body, ?string $userId): array
-    {
-        $subjectId = (string) ($userId ?? '');
-        $scopeId = (string) ($body['scopeId'] ?? '');
-        /** @var list<mixed> $permissions */
-        $permissions = (array) ($body['permissions'] ?? []);
+        $subject = (string) ($body['subjectId'] ?? $userId ?? '');
+        $scope = $this->scopeOfCheck($body);
+        $roadCatalog = ($body['catalog'] ?? null) === 'road';
 
         $results = [];
-        foreach ($permissions as $perm) {
-            if (! is_string($perm)) {
-                continue;
-            }
-            $results[] = [
-                'permission' => $perm,
-                'allowed' => $this->verdict($subjectId, $scopeId, $perm),
-            ];
+        foreach ($codes as $code) {
+            $results[] = $this->decide($subject, $scope, (string) $code, $roadCatalog);
         }
 
         return ['status' => 200, 'body' => ['data' => ['results' => $results]]];
     }
 
     /**
-     * Scope-keyed effective-permissions handler. Honors the `scopes` CSV —
-     * only answers for the requested scope ids — and returns `(action,
-     * subject)` tuples per scope, the shape the real
-     * `GET /iam/authorization/me/permissions` emits. Permissions are
-     * returned as declared (manage→CRUD expansion is the API's job and is
-     * exercised API-side, not here).
+     * `GET /authz/checks/explain`: takes a scope id and one code, and nothing
+     * shorter, so an SDK that sends a business unit here fails its test.
+     *
+     * @param  array<string,scalar|null>  $query
+     * @return array{status:int, body:array<string,mixed>}
+     */
+    private function handleExplain(array $query, ?string $userId): array
+    {
+        $scopeId = (string) ($query['scopeId'] ?? '');
+        $code = (string) ($query['code'] ?? '');
+        if ($scopeId === '' || $code === '') {
+            throw $this->apiError(400, '/authz/checks/explain', 'Send one scopeId and one code.');
+        }
+
+        $subject = (string) ($query['subjectId'] ?? $userId ?? '');
+        $scope = $this->locateScope($scopeId);
+        $chain = $scope === null ? [] : array_values(array_unique([$scopeId, (string) $scope['bu']['iamScopeId']]));
+
+        $held = [];
+        if ($scope !== null) {
+            $bu = (string) $scope['bu']['id'];
+            foreach ($this->rolesUserHasOnBu($subject, $bu) as $role) {
+                $held[] = $this->makeAssignment(['subjectId' => $subject, 'roleId' => 'role_'.$role, 'roleName' => $role, 'scopeId' => $scope['bu']['iamScopeId']]);
+            }
+        }
+
+        return ['status' => 200, 'body' => ['data' => $this->decide($subject, $scope, $code, false) + [
+            'chain' => $chain,
+            'heldRoles' => $held,
+        ]]];
+    }
+
+    /**
+     * `GET /authz/me/permissions`: a list of `{ scopeId, all, codes }`, for the
+     * scopes asked or, with no `scopes`, for every scope the caller reaches.
      *
      * @param  array<string,scalar|null>  $query
      * @return array{status:int, body:array<string,mixed>}
      */
     private function handleMyPermissions(array $query, ?string $userId): array
     {
-        // Single-scope mode (`?scope=`) → { data: { permissions: [tuples] } }.
-        $single = isset($query['scope']) ? trim((string) $query['scope']) : '';
-        if ($single !== '') {
-            return ['status' => 200, 'body' => ['data' => [
-                'permissions' => $this->tuplesForScope($single, $userId),
-            ]]];
+        if (! array_key_exists('scopes', $query)) {
+            return ['status' => 200, 'body' => ['data' => array_map(
+                fn (string $scopeId): array => $this->effective($scopeId, (string) $userId),
+                $this->scopesReachedBy((string) $userId),
+            )]];
         }
 
-        // Bulk mode (`?scopes=<csv>`) → { data: { <scopeId>: [tuples] } },
-        // answering only for the requested scopes.
-        $requested = array_values(array_filter(
-            array_map('trim', explode(',', (string) ($query['scopes'] ?? ''))),
+        $requested = array_values(array_unique(array_filter(
+            array_map('trim', explode(',', (string) $query['scopes'])),
             static fn (string $s): bool => $s !== '',
-        ));
-
-        /** @var array<string, list<array{action:string, subject:string}>> $byScope */
-        $byScope = [];
-        foreach ($requested as $scopeId) {
-            $byScope[$scopeId] = $this->tuplesForScope($scopeId, $userId);
+        )));
+        if ($requested === [] || count($requested) > 50) {
+            throw $this->apiError(400, '/authz/me/permissions', 'Send between 1 and 50 scopes.');
         }
 
-        return ['status' => 200, 'body' => ['data' => $byScope]];
+        return ['status' => 200, 'body' => ['data' => array_map(
+            fn (string $scopeId): array => $this->effective($scopeId, (string) $userId),
+            $requested,
+        )]];
     }
 
     /**
-     * Effective `(action, subject)` tuples for a user on a scope id, as
-     * declared in the scenario.
+     * The scope a check names: a `scopeId`, or the two shorter forms. A
+     * `scopeId` that matches nothing is `null`, which the engine answers with
+     * `denied_unknown_scope`.
      *
-     * @return list<array{action:string, subject:string}>
+     * @param  array<string,mixed>  $body
+     * @return array{bu:array<string,mixed>, platformId:?string}|null
      */
-    private function tuplesForScope(string $scopeId, ?string $userId): array
+    private function scopeOfCheck(array $body): ?array
     {
-        $bu = $this->resolveBuFromScope($scopeId);
-        if ($bu === null || $userId === null) {
-            return [];
+        if (is_string($body['scopeId'] ?? null) && $body['scopeId'] !== '') {
+            return $this->locateScope($body['scopeId']);
         }
 
-        return array_map(
-            static function (string $p): array {
-                if ($p === '*') {
-                    return ['action' => '*', 'subject' => '*'];
-                }
-                $parts = explode(':', $p, 2);
+        $buId = $body['businessUnitId'] ?? null;
+        if (! is_string($buId) || $buId === '') {
+            throw $this->apiError(400, '/authz/checks', 'Send scopeId or businessUnitId.');
+        }
 
-                return ['action' => $parts[0] ?? '', 'subject' => $parts[1] ?? ''];
-            },
-            $this->scenario->effectivePermissions($userId, (string) $bu['id']),
-        );
+        $bu = $this->scenario->findBusinessUnit($buId);
+        $platformId = isset($body['platformId']) ? (string) $body['platformId'] : null;
+        if ($bu === null || ($platformId !== null && ! isset($this->scenario->subscriptions[$buId][$platformId]))) {
+            throw $this->apiError(404, '/authz/checks', 'No scope for that business unit and platform.', 'SCOPE_NOT_FOUND');
+        }
+
+        return ['bu' => $bu, 'platformId' => $platformId];
     }
 
-    private function verdict(string $subjectId, string $scopeId, string $required): bool
+    /**
+     * Find a scope by id: a BU's, or a subscription's.
+     *
+     * @return array{bu:array<string,mixed>, platformId:?string}|null
+     */
+    private function locateScope(string $scopeId): ?array
     {
         $bu = $this->resolveBuFromScope($scopeId);
-        if ($bu === null || $subjectId === '' || $required === '') {
-            return false;
+        if ($bu !== null) {
+            return ['bu' => $bu, 'platformId' => null];
         }
 
-        $effective = $this->scenario->effectivePermissions($subjectId, (string) $bu['id']);
-
-        if (in_array(Permission::WILDCARD, $effective, true)) {
-            return true;
-        }
-
-        // `manage:X` grants every action on X.
-        $parts = explode(':', $required, 2);
-        if (count($parts) === 2) {
-            $managePermission = 'manage:'.$parts[1];
-            if (in_array($managePermission, $effective, true)) {
-                return true;
+        foreach ($this->scenario->subscriptions as $buId => $byPlatform) {
+            foreach ($byPlatform as $platformId => $sub) {
+                if ($sub['scopeId'] === $scopeId) {
+                    return ['bu' => (array) $this->scenario->findBusinessUnit($buId), 'platformId' => $platformId];
+                }
             }
         }
 
-        return in_array($required, $effective, true);
+        return null;
     }
 
     /**
-     * The real `/authorize` engine is keyed by the IAM **scope id**
-     * (`scope_bu_1`), not the BU id. Match ONLY by `iamScopeId` so a test
-     * catches an SDK that forgets to resolve `buId -> iamScopeId` before
-     * authorizing (passing the BU id straight through denies everything in
-     * production).
+     * The engine's verdict for one code. A scope has one catalog: Road's at a
+     * BU, the platform's at a subscription. A code outside it is
+     * `denied_unknown_code` and a role of another catalog never answers for it,
+     * except a BU's `*`, which covers every scope below the BU.
+     *
+     * @param  array{bu:array<string,mixed>, platformId:?string}|null  $scope
+     * @return array{code:string, allowed:bool, reason:string}
+     */
+    private function decide(string $subject, ?array $scope, string $code, bool $roadCatalog): array
+    {
+        $deny = static fn (string $reason): array => ['code' => $code, 'allowed' => false, 'reason' => $reason];
+        if ($scope === null) {
+            return $deny('denied_unknown_scope');
+        }
+
+        $buId = (string) $scope['bu']['id'];
+        $held = $this->scenario->effectivePermissions($subject, $buId);
+        $hasAll = in_array(Permission::WILDCARD, $held, true);
+
+        if ($scope['platformId'] !== null && ! $roadCatalog) {
+            $platformId = $scope['platformId'];
+            $declared = array_merge(...array_values(['' => []] + $this->scenario->subscriptions[$buId][$platformId]['roles']));
+            $held = $this->scenario->subscriptionPermissions($subject, $buId, $platformId);
+            $hasAll = $hasAll || in_array(Permission::WILDCARD, $held, true);
+        } else {
+            $declared = array_merge(...array_values(['' => []] + ($this->scenario->rolesByBu[$buId] ?? [])));
+            if (Permission::isRoadCode($code)) {
+                $declared[] = $code;
+            }
+        }
+
+        if (! $this->satisfiedBy($declared, $code)) {
+            return $deny('denied_unknown_code');
+        }
+        if ($this->satisfiedBy($held, $code)) {
+            return ['code' => $code, 'allowed' => true, 'reason' => 'allowed_role'];
+        }
+        if ($hasAll) {
+            return ['code' => $code, 'allowed' => true, 'reason' => 'allowed_grants_all'];
+        }
+
+        return $deny('denied_no_grant');
+    }
+
+    /**
+     * A declared code satisfies a required one when it is the same code, or
+     * `manage` on the same subject asked for a CRUD action.
+     *
+     * @param  list<string>  $declared
+     */
+    private function satisfiedBy(array $declared, string $required): bool
+    {
+        if (in_array($required, $declared, true)) {
+            return true;
+        }
+        [$action, $noun] = array_pad(explode(':', $required, 2), 2, '');
+
+        return in_array($action, self::MANAGE_IMPLIES, true) && in_array('manage:'.$noun, $declared, true);
+    }
+
+    /**
+     * What a subject may do at a scope, as the engine reports it: `manage`
+     * expanded, and `all` in place of codes for a holder of `*`.
+     *
+     * @return array{scopeId:string, all:bool, codes:list<string>}
+     */
+    private function effective(string $scopeId, string $subject): array
+    {
+        $scope = $this->locateScope($scopeId);
+        if ($scope === null || $subject === '') {
+            return ['scopeId' => $scopeId, 'all' => false, 'codes' => []];
+        }
+
+        $buId = (string) $scope['bu']['id'];
+        $bu = $this->scenario->effectivePermissions($subject, $buId);
+        $held = $scope['platformId'] === null
+            ? $bu
+            : $this->scenario->subscriptionPermissions($subject, $buId, $scope['platformId']);
+        if (in_array(Permission::WILDCARD, $bu, true) || in_array(Permission::WILDCARD, $held, true)) {
+            return ['scopeId' => $scopeId, 'all' => true, 'codes' => []];
+        }
+
+        $codes = [];
+        foreach ($held as $code) {
+            $codes[$code] = true;
+            [$action, $noun] = array_pad(explode(':', $code, 2), 2, '');
+            if ($action === 'manage') {
+                foreach (self::MANAGE_IMPLIES as $implied) {
+                    $codes[$implied.':'.$noun] = true;
+                }
+            }
+        }
+
+        return ['scopeId' => $scopeId, 'all' => false, 'codes' => array_keys($codes)];
+    }
+
+    /**
+     * Every scope a user reaches: their BUs and those BUs' subscriptions.
+     *
+     * @return list<string>
+     */
+    private function scopesReachedBy(string $subject): array
+    {
+        $scopes = [];
+        foreach ($this->scenario->memberships($subject)['memberships'] as $membership) {
+            $buId = (string) ($membership['businessUnit']['id'] ?? '');
+            $scopes[] = (string) ($this->scenario->businessUnits[$buId]['iamScopeId'] ?? '');
+            foreach ($this->scenario->subscriptions[$buId] ?? [] as $sub) {
+                $scopes[] = $sub['scopeId'];
+            }
+        }
+
+        return $scopes;
+    }
+
+    /**
+     * A BU's scope is its `iamScopeId` (`scope_bu_1`), never its id. Match ONLY
+     * by `iamScopeId`, so a test catches an SDK that sends a BU id as a
+     * `scopeId`: the API has no such scope.
      *
      * @return array<string,mixed>|null
      */
@@ -568,10 +682,11 @@ final class InMemoryBackend
     private function makeAssignment(array $input): array
     {
         return [
-            'id' => 'assign_new',
+            'id' => 'asg_new',
             'subjectType' => (string) ($input['subjectType'] ?? 'user'),
             'subjectId' => (string) ($input['subjectId'] ?? ''),
             'roleId' => (string) ($input['roleId'] ?? ''),
+            'roleName' => (string) ($input['roleName'] ?? ''),
             'scopeId' => (string) ($input['scopeId'] ?? ''),
             'grantedBy' => 'fake',
             'grantedAt' => '2024-01-01T00:00:00Z',
@@ -729,6 +844,7 @@ final class InMemoryBackend
         $kinds = [
             400 => ['validation-error', 'Validation Error'],
             403 => ['permission-denied', 'Permission Denied'],
+            404 => ['not-found', 'Not Found'],
             409 => ['conflict', 'Conflict'],
         ];
         [$type, $title] = $kinds[$status];

@@ -6,8 +6,10 @@ namespace B1Road\Laravel\Authorization;
 
 use B1Road\Laravel\Auth\RoadUser;
 use B1Road\Laravel\Client\HttpTransportInterface;
+use B1Road\Laravel\Client\Resources\Iam;
 use B1Road\Laravel\Context\RoadContext;
-use B1Road\Laravel\DTO\AuthorizeResult;
+use B1Road\Laravel\DTO\CheckDecision;
+use B1Road\Laravel\Exceptions\RoadApiException;
 use B1Road\Laravel\Exceptions\RoadAuthnException;
 
 /**
@@ -15,14 +17,21 @@ use B1Road\Laravel\Exceptions\RoadAuthnException;
  * no HTTP call until `check()` / `trace()` / `result()` runs.
  *
  *   Road::can(Action::Read, Subject::Member)->in($buId)->check();
- *   Road::can(Action::Update, Subject::Role)->in($buId)->trace();
+ *   Road::can('read', 'Invoice')->in($buId)->check();
+ *
+ * The code decides whose catalog answers. A {@see Subject} is Road's, so it is
+ * checked at the business unit. Any other subject is your platform's, so it is
+ * checked at the unit's subscription to `road.platform_id`. Two overrides:
+ * `forPlatform()` for your own code that shares a name with Road's, `inScope()`
+ * to name a scope yourself.
  */
 final class Can
 {
+    private ?string $businessUnitId = null;
+
     private ?string $scopeId = null;
 
-    /** Cached `iamScopeId` resolved from the BU id passed to `->in()`. */
-    private ?string $resolvedScope = null;
+    private bool $platformCode = false;
 
     private string $permission;
 
@@ -31,21 +40,43 @@ final class Can
         private readonly RoadContext $context,
         Action|string $action,
         Subject|string $subject,
+        private string $platformId = '',
     ) {
         $this->permission = Permission::format($action, $subject);
     }
 
-    public function in(string $scopeId): self
+    public function in(string $businessUnitId): self
+    {
+        $this->businessUnitId = $businessUnitId;
+        $this->scopeId = null;
+
+        return $this;
+    }
+
+    /** Check at a scope you already hold the id of. Its catalog decides the code. */
+    public function inScope(string $scopeId): self
     {
         $this->scopeId = $scopeId;
+        $this->businessUnitId = null;
+
+        return $this;
+    }
+
+    /**
+     * Check in a platform's catalog even when the code reads like Road's, as
+     * `manage:Role` does. Defaults to `road.platform_id`.
+     */
+    public function forPlatform(?string $platformId = null): self
+    {
+        $this->platformCode = true;
+        $this->platformId = $platformId ?? $this->platformId;
 
         return $this;
     }
 
     /**
      * Escape hatch: override the computed `action:Subject` with a raw
-     * permission string. Useful for platform-defined subjects outside
-     * Road's core algebra (e.g. `read:CustomThing`) or the wildcard.
+     * permission string, such as one built elsewhere.
      */
     public function raw(string $permission): self
     {
@@ -56,44 +87,45 @@ final class Can
 
     public function check(): bool
     {
-        return $this->resolve()->allowed;
+        return $this->result()->allowed;
     }
 
     /**
-     * Build a decision trace for this check. The Road API does not return a
-     * role-attributed decision (NFR-14 deliberately hides which role granted
-     * what, and `/authorize` returns only `{ allowed, reason }`), so the trace
-     * reports the caller's **effective** permissions on the scope — fetched
-     * from `/iam/authorization/me/permissions?scope=` — under a generic
-     * `via: 'effective'` grant. That is honest (reconstructable from the real
-     * API) and still answers "what do I hold vs. what's required?".
+     * Build a decision trace for this check. The verdict, its reason and the
+     * scopes walked come from `GET /authz/checks/explain`, which only takes a
+     * scope id, so a check by business unit reads that id first. The grants are
+     * the caller's effective codes at the scope under a generic
+     * `via: 'effective'`: they answer "what do I hold vs. what's required?"
+     * without claiming which role granted what.
      */
     public function trace(): DecisionTrace
     {
         $user = $this->requireUser();
-        $scopeId = $this->resolvedScopeId();
-        $result = $this->authorizeRaw();
+        $scopeId = $this->resolveScopeId();
+        $explanation = (new Iam($this->http))->explain($scopeId, $this->permission);
         $grants = $this->effectiveGrants($scopeId);
 
         return DecisionTrace::fromArray([
-            // Display the scope the caller asked about (the BU id), not the
-            // internal IAM scope id we resolved it to.
+            // Display what the caller asked about, not the scope id behind it.
             'subject' => 'user:'.$user->id,
-            'scope' => (string) $this->scopeId,
+            'scope' => (string) $this->scope(),
             'required' => [$this->permission],
             'grants' => $grants === []
                 ? []
                 : [['via' => 'effective', 'permissions' => $grants]],
-            'verdict' => ($result['allowed'] ?? false) ? 'allow' : 'deny',
-            'reason' => (string) ($result['reason'] ?? ''),
-            // `evaluatedScopes` (the walked scope chain) is not exposed by the
-            // API, so it is intentionally omitted rather than fabricated.
+            'verdict' => $explanation->allowed ? 'allow' : 'deny',
+            'reason' => $explanation->reason,
+            'evaluatedScopes' => $explanation->chain,
         ]);
     }
 
-    public function result(): AuthorizeResult
+    public function result(): CheckDecision
     {
-        return $this->resolve();
+        $this->requireUser();
+
+        // No subject on the wire: the API checks the caller the access token
+        // names, which also keeps a service client right with no extra work.
+        return (new Iam($this->http))->check($this->address() + ['codes' => [$this->permission]])->results[0];
     }
 
     public function permissionString(): string
@@ -103,108 +135,85 @@ final class Can
 
     public function scope(): ?string
     {
-        return $this->scopeId;
-    }
-
-    private function resolve(): AuthorizeResult
-    {
-        $data = $this->authorizeRaw();
-
-        return AuthorizeResult::from([
-            'allowed' => (bool) ($data['allowed'] ?? false),
-            'reason' => (string) ($data['reason'] ?? ''),
-            // `evaluatedScopes` is not returned by the API (the engine emits
-            // only `{ allowed, reason }`); kept for shape stability, normally
-            // empty.
-            'evaluatedScopes' => array_values(array_filter(
-                (array) ($data['evaluatedScopes'] ?? []),
-                'is_string',
-            )),
-        ]);
+        return $this->businessUnitId ?? $this->scopeId;
     }
 
     /**
-     * Single authorize round-trip against the **resolved** IAM scope id.
+     * How this check names its scope on the wire: `scopeId`, `businessUnitId`,
+     * or `businessUnitId` plus `platformId`.
      *
-     * @return array<string,mixed> The `data` envelope: `{ allowed, reason }`.
+     * @return array<string,string>
      */
-    private function authorizeRaw(): array
+    public function address(): array
     {
-        $this->requireUser();
-        $scopeId = $this->resolvedScopeId();
-
-        // Omit `subjectId`: the API authorizes the caller derived from the access
-        // token. The BFF holds the caller's token, not their Road user id —
-        // forwarding the Auth Server `sub` 403s every check, because IAM keys
-        // subjects by the Road profile id, not the `sub`. The token already
-        // identifies the caller. Mirrors @b1-road/nestjs.
-        $body = $this->http->request('POST', '/iam/authorization/authorize', [
-            'subjectType' => 'user',
-            'scopeId' => $scopeId,
-            'permission' => $this->permission,
-        ]);
-
-        return is_array($body['data'] ?? null) ? $body['data'] : $body;
-    }
-
-    /**
-     * The BU id passed to `->in()` is an Organization-tier id, but the
-     * authorization engine is keyed by the IAM scope id. Resolve it from the
-     * BU detail (cached for this check), mirroring the Nest and React SDKs —
-     * passing the BU id straight through denies everything against the real API.
-     */
-    private function resolvedScopeId(): string
-    {
-        $this->requireUser();
-        if ($this->scopeId === null || $this->scopeId === '') {
+        if ($this->scopeId !== null && $this->scopeId !== '') {
+            return ['scopeId' => $this->scopeId];
+        }
+        if ($this->businessUnitId === null || $this->businessUnitId === '') {
             throw new \LogicException(
                 'Road::can(...) requires ->in($buId) before check()/trace(). '
                 .'Pass the Business Unit id you are authorizing against.'
             );
         }
-        if ($this->resolvedScope !== null) {
-            return $this->resolvedScope;
+        if (! $this->platformCode && Permission::isRoadCode($this->permission)) {
+            return ['businessUnitId' => $this->businessUnitId];
+        }
+        if ($this->platformId === '') {
+            throw new \LogicException(
+                "'{$this->permission}' is not a Road code, so it is checked in your platform's catalog. "
+                .'Set ROAD_PLATFORM_ID, or call ->forPlatform($platformId).'
+            );
         }
 
-        $detail = $this->http->request('GET', '/organization/business-units/'.rawurlencode($this->scopeId));
-        $data = is_array($detail['data'] ?? null) ? $detail['data'] : $detail;
+        return ['businessUnitId' => $this->businessUnitId, 'platformId' => $this->platformId];
+    }
 
-        return $this->resolvedScope = (string) ($data['iamScopeId'] ?? $this->scopeId);
+    /** The scope id behind this check, read from the API when it was not given. */
+    private function resolveScopeId(): string
+    {
+        $address = $this->address();
+        if (isset($address['scopeId'])) {
+            return $address['scopeId'];
+        }
+
+        $path = '/organization/business-units/'.rawurlencode($address['businessUnitId']);
+        $key = 'iamScopeId';
+        if (isset($address['platformId'])) {
+            $path .= '/subscriptions/'.rawurlencode($address['platformId']);
+            $key = 'scopeId';
+        }
+
+        $body = $this->http->request('GET', $path);
+        $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
+        $scopeId = $data[$key] ?? null;
+        if (! is_string($scopeId) || $scopeId === '') {
+            throw new RoadApiException("GET {$path} answered without {$key}.", 'malformed_response', 502);
+        }
+
+        return $scopeId;
     }
 
     /**
-     * The caller's effective permission strings on the given scope, fetched
-     * from the scope-keyed `/me/permissions?scope=` endpoint. Best-effort:
-     * a failure yields no grants rather than masking the verdict.
+     * The caller's effective codes at the scope, `*` for a role that holds them
+     * all. Best-effort: a failure yields no grants rather than masking the
+     * verdict.
      *
      * @return list<string>
      */
     private function effectiveGrants(string $scopeId): array
     {
         try {
-            $body = $this->http->request('GET', '/iam/authorization/me/permissions', null, [
-                'scope' => $scopeId,
-            ]);
+            $body = $this->http->request('GET', '/authz/me/permissions', null, ['scopes' => $scopeId]);
         } catch (\Throwable) {
             return [];
         }
-        $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
-        $tuples = is_array($data['permissions'] ?? null) ? $data['permissions'] : [];
-
-        $out = [];
-        foreach ($tuples as $tuple) {
-            if (! is_array($tuple)) {
-                continue;
-            }
-            $action = (string) ($tuple['action'] ?? '');
-            $subject = (string) ($tuple['subject'] ?? '');
-            if ($action === '') {
-                continue;
-            }
-            $out[] = ($action === '*' && $subject === '*') ? '*' : $action.':'.$subject;
+        $rows = is_array($body['data'] ?? null) ? $body['data'] : [];
+        $effective = is_array($rows[0] ?? null) ? $rows[0] : [];
+        if (($effective['all'] ?? false) === true) {
+            return [Permission::WILDCARD];
         }
 
-        return $out;
+        return array_values(array_filter((array) ($effective['codes'] ?? []), 'is_string'));
     }
 
     private function requireUser(): RoadUser

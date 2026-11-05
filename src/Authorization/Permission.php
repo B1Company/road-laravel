@@ -6,9 +6,8 @@ namespace B1Road\Laravel\Authorization;
 
 /**
  * `"$action:$Subject"` permission string utilities. Lowercase verb,
- * PascalCase subject — exactly what `/iam/authorization/authorize`
- * expects on the wire and what `RoadPermission` describes in
- * `@b1-road/types`.
+ * PascalCase subject: exactly what `POST /authz/checks` takes in `codes` and
+ * what `RoadPermission` describes in `@b1-road/types`.
  */
 final class Permission
 {
@@ -27,6 +26,17 @@ final class Permission
         $noun = $subject instanceof Subject ? $subject->value : trim($subject);
 
         return $verb.':'.$noun;
+    }
+
+    /**
+     * Whether a code belongs to Road's own catalog, going by its subject. Every
+     * other subject is a platform's.
+     */
+    public static function isRoadCode(string $permission): bool
+    {
+        $colon = strpos($permission, ':');
+
+        return $colon !== false && Subject::tryFrom(substr($permission, $colon + 1)) !== null;
     }
 
     public static function isWildcard(string $permission): bool

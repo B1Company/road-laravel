@@ -71,8 +71,11 @@ it('drives the whole client surface through the in-memory fake', function () {
     expect($client->iam()->scope('scope_1')->effectivePermissions('user', 'u'))->toBeInstanceOf(EffectivePermissionsResult::class);
 
     // Authorize (the user holds '*' on bu_1)
-    expect($client->iam()->authorize(['subjectType' => 'user', 'subjectId' => 'u', 'scopeId' => 'scope_1', 'permission' => 'read:Member'])->allowed)->toBeTrue();
-    expect($client->iam()->authorizeBatch(['subjectType' => 'user', 'subjectId' => 'u', 'scopeId' => 'scope_1', 'permissions' => ['read:Member']])->results)->toHaveCount(1);
+    $checked = $client->iam()->check(['scopeId' => 'scope_1', 'codes' => ['read:Member', 'read:Nothing']])->results;
+    expect($checked[0]->allowed)->toBeTrue();
+    expect($checked[0]->reason)->toBe('allowed_grants_all');
+    expect($checked[1]->allowed)->toBeFalse();
+    expect($checked[1]->reason)->toBe('denied_unknown_code');
 
     $fake->assertCalled('POST', '/iam/authorization/scopes/scope_1/roles');
     $fake->assertCalled('POST', '/organization/business-units/bu_1/members/mem_bu_1_u/roles');
@@ -84,7 +87,7 @@ it('routes authorization checks through the fake and records the call', function
     $fake = fakeFullScenario();
 
     expect(Road::can(Action::Read, Subject::Member)->in('bu_1')->check())->toBeTrue();
-    $fake->assertCalled('POST', '/iam/authorization/authorize');
+    $fake->assertCalled('POST', '/authz/checks');
 });
 
 it('supports assertNothingCalled and assertCallCount', function () {

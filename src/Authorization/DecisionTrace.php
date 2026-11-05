@@ -5,11 +5,10 @@ declare(strict_types=1);
 namespace B1Road\Laravel\Authorization;
 
 /**
- * Structured "why" record for an authorization decision. Same shape
- * Road's `/iam/authorization/authorize` returns under the debug
- * header, and what `RoadAuthzException::trace()` exposes. Mirrors
- * `apps/sdks/road-nestjs/src/permissions/decision-trace.ts` 1:1 so
- * the rendered message is identical across SDKs (SDK_DX_BAR §11).
+ * Structured "why" record for an authorization decision, built from
+ * `GET /authz/checks/explain` and what `RoadAuthzException::trace()`
+ * exposes. Mirrors `apps/sdks/road-nestjs/src/permissions/decision-trace.ts`
+ * 1:1 so the rendered message is identical across SDKs (SDK_DX_BAR §11).
  */
 final readonly class DecisionTrace
 {

@@ -5,14 +5,15 @@ declare(strict_types=1);
 namespace B1Road\Laravel\Authorization;
 
 use B1Road\Laravel\Client\HttpTransportInterface;
+use B1Road\Laravel\Client\Resources\Iam;
 use B1Road\Laravel\Context\RoadContext;
 use B1Road\Laravel\Exceptions\RoadAuthnException;
 
 /**
- * Batched permission checks against a single scope. Built by
- * `Road::canMany([...])` — accepts a list of `Can` instances that
- * share the same scope id and resolves them in a single
- * `/iam/authorization/authorize/batch` round-trip.
+ * Batched permission checks for one business unit. Built by
+ * `Road::canMany([...])`. One `POST /authz/checks` answers every code that
+ * shares a catalog, so a batch of Road codes is one round-trip, and mixing them
+ * with your platform's codes is two.
  *
  *   $allowed = Road::canMany([
  *       Road::can(Action::Read,   Subject::Member),
@@ -22,6 +23,8 @@ use B1Road\Laravel\Exceptions\RoadAuthnException;
  */
 final class CanBatch
 {
+    private ?string $businessUnitId = null;
+
     private ?string $scopeId = null;
 
     /** @param  list<Can>  $checks */
@@ -31,9 +34,19 @@ final class CanBatch
         private readonly array $checks,
     ) {}
 
-    public function in(string $scopeId): self
+    public function in(string $businessUnitId): self
+    {
+        $this->businessUnitId = $businessUnitId;
+        $this->scopeId = null;
+
+        return $this;
+    }
+
+    /** Check at a scope you already hold the id of. See {@see Can::inScope()}. */
+    public function inScope(string $scopeId): self
     {
         $this->scopeId = $scopeId;
+        $this->businessUnitId = null;
 
         return $this;
     }
@@ -52,63 +65,33 @@ final class CanBatch
                 errorCode: 'no_subject',
             );
         }
-        if ($this->scopeId === null || $this->scopeId === '') {
+        if (($this->businessUnitId ?? $this->scopeId ?? '') === '') {
             throw new \LogicException(
-                'Road::canMany(...) requires ->in($scopeId) before resolve().'
+                'Road::canMany(...) requires ->in($buId) before resolve().'
             );
         }
-        if ($this->checks === []) {
-            return [];
+
+        /** @var array<string, array{address:array<string,string>, positions:list<int>, codes:list<string>}> $groups */
+        $groups = [];
+        foreach ($this->checks as $position => $check) {
+            $bound = clone $check;
+            $address = ($this->scopeId !== null ? $bound->inScope($this->scopeId) : $bound->in((string) $this->businessUnitId))->address();
+            $key = (string) json_encode($address);
+            $groups[$key] ??= ['address' => $address, 'positions' => [], 'codes' => []];
+            $groups[$key]['positions'][] = $position;
+            $groups[$key]['codes'][] = $check->permissionString();
         }
 
-        $permissions = array_map(fn (Can $c) => $c->permissionString(), $this->checks);
-
-        // Resolve the BU id to its IAM scope id — the engine is scope-keyed,
-        // and passing the BU id straight through denies everything against the
-        // real API (mirrors Can + @b1-road/nestjs/react).
-        $scopeId = $this->resolveScopeId($this->scopeId);
-
-        // Omit `subjectId` — the API authorizes the token-derived caller (IAM
-        // keys subjects by the Road profile id, not the Auth Server `sub`).
-        // Mirrors @b1-road/nestjs.
-        $body = $this->http->request('POST', '/iam/authorization/authorize/batch', [
-            'subjectType' => 'user',
-            'scopeId' => $scopeId,
-            'permissions' => array_values($permissions),
-        ]);
-
-        $data = is_array($body['data'] ?? null) ? $body['data'] : $body;
-        /** @var list<array<string,mixed>> $results */
-        $results = is_array($data['results'] ?? null) ? $data['results'] : [];
-
-        // Index by permission so we return booleans in the input order.
-        $byPermission = [];
-        foreach ($results as $row) {
-            if (! is_array($row)) {
-                continue;
+        $iam = new Iam($this->http);
+        $allowed = [];
+        foreach ($groups as $group) {
+            $results = $iam->check($group['address'] + ['codes' => $group['codes']])->results;
+            foreach ($group['positions'] as $i => $position) {
+                $allowed[$position] = $results[$i]->allowed;
             }
-            $perm = isset($row['permission']) ? (string) $row['permission'] : null;
-            if ($perm === null) {
-                continue;
-            }
-            $byPermission[$perm] = (bool) ($row['allowed'] ?? false);
         }
+        ksort($allowed);
 
-        return array_values(array_map(
-            fn (string $p) => $byPermission[$p] ?? false,
-            $permissions,
-        ));
-    }
-
-    /**
-     * Resolve a BU id to its IAM scope id via the BU detail. Returns the
-     * input unchanged if the detail carries no `iamScopeId`.
-     */
-    private function resolveScopeId(string $buId): string
-    {
-        $detail = $this->http->request('GET', '/organization/business-units/'.rawurlencode($buId));
-        $data = is_array($detail['data'] ?? null) ? $detail['data'] : $detail;
-
-        return (string) ($data['iamScopeId'] ?? $buId);
+        return array_values($allowed);
     }
 }

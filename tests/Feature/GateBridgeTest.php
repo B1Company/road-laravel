@@ -21,14 +21,18 @@ uses(ActsAsRoadUser::class);
 
 function gateScenario(): RoadScenario
 {
+    config(['road.platform_id' => 'plat_acme']);
+
     return RoadScenario::make()
         ->withUser('u_admin', email: 'a@road.test')
         ->withUser('u_viewer', email: 'v@road.test')
         ->withBusinessUnit('bu_1', iamScopeId: 'scope_bu_1')
-        ->withRole('bu_1', 'Admin', permissions: ['manage:Project'])
-        ->withRole('bu_1', 'Viewer', permissions: ['read:Project'])
-        ->withMember('bu_1', 'u_admin', roles: ['Admin'])
-        ->withMember('bu_1', 'u_viewer', roles: ['Viewer']);
+        ->withMember('bu_1', 'u_admin', roles: [])
+        ->withMember('bu_1', 'u_viewer', roles: [])
+        ->withSubscription('bu_1', 'plat_acme',
+            roles: ['Admin' => ['manage:Project'], 'Viewer' => ['read:Project']],
+            members: ['u_admin' => ['Admin'], 'u_viewer' => ['Viewer']],
+        );
 }
 
 beforeEach(function () {
