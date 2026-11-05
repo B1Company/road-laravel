@@ -67,7 +67,9 @@ it('the fake declares exactly the codes Road declares, root by root', function (
         sort($codes);
         $fake[$owner] = $codes;
     }
+    ksort($fake);
+    $api = roadDefinitionsFromApi();
+    ksort($api);
 
-    expect($fake)->toEqualCanonicalizing(roadDefinitionsFromApi());
-    expect(array_keys($fake))->toEqualCanonicalizing(array_keys(roadDefinitionsFromApi()));
+    expect($fake)->toBe($api);
 });
