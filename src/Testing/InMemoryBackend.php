@@ -56,7 +56,7 @@ final class InMemoryBackend
             'update:PlatformOperations', 'read:PlatformCredential', 'create:PlatformCredential',
             'update:PlatformCredential', 'delete:PlatformCredential', 'manage:PlatformCredential',
             'read:ExtensionPoint', 'manage:ExtensionPoint',
-            'read:Permission', 'manage:Permission', 'read:Role', 'manage:Role',
+            'read:Permission', 'manage:Permission', 'read:Role', 'manage:Role', 'manage:Assignment',
         ],
     ];
 
